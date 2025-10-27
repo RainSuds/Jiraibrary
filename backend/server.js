@@ -14,13 +14,15 @@ app.use(express.json());
 app.use('/images', express.static(path.join(__dirname, '../public/images')));
 
 // Configure multer for image uploads
+const crypto = require('crypto');
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, path.join(__dirname, '../public/images'));
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
+    const uniqueId = crypto.randomUUID();
+    cb(null, uniqueId + path.extname(file.originalname));
   }
 });
 
@@ -271,10 +273,14 @@ app.get('/api/items', (req, res) => {
     
     if (tags) {
       const tagIds = tags.split(',');
-      query += ` AND items.id IN (
-        SELECT item_id FROM item_tags WHERE tag_id IN (${tagIds.map(() => '?').join(',')})
-      )`;
-      params.push(...tagIds);
+      // Validate that all tagIds are numeric
+      const validTagIds = tagIds.filter(id => !isNaN(parseInt(id)));
+      if (validTagIds.length > 0) {
+        query += ` AND items.id IN (
+          SELECT item_id FROM item_tags WHERE tag_id IN (${validTagIds.map(() => '?').join(',')})
+        )`;
+        params.push(...validTagIds);
+      }
     }
     
     if (search) {

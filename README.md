@@ -27,6 +27,35 @@ A minimal viable product (MVP) for a Jirai Kei fashion database website, similar
 - Structured for AWS deployment
 - React frontend with Tailwind CSS
 
+## Security Considerations
+
+### For MVP/Development
+The current implementation is suitable for development and testing but should be enhanced before production deployment:
+
+1. **Rate Limiting**: Add rate limiting to prevent abuse (e.g., using `express-rate-limit`)
+2. **Authentication**: Implement authentication for admin endpoints
+3. **Input Validation**: Add comprehensive input validation
+4. **HTTPS**: Always use HTTPS in production
+5. **CORS**: Configure CORS to allow only trusted domains
+
+### Recommended Production Enhancements
+```bash
+# Install security packages
+npm install express-rate-limit helmet express-validator
+```
+
+Example rate limiting setup:
+```javascript
+const rateLimit = require('express-rate-limit');
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100 // limit each IP to 100 requests per windowMs
+});
+
+app.use('/api/', limiter);
+```
+
 ## Tech Stack
 
 ### Frontend
