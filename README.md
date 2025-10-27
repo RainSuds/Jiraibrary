@@ -25,7 +25,7 @@ Jiraibrary is a catalog of Jirai Kei fashion pieces inspired by projects such as
 
 ```
 catalog/           # Django app with models, admin, and views
-jirailibrary/      # Project settings, URLs, WSGI/ASGI entry points
+jiraibrary/      # Project settings, URLs, WSGI/ASGI entry points
 media/             # Local media root (gitignored)
 requirements.txt   # Locked dependency list
 README.md          # Project documentation (this file)
