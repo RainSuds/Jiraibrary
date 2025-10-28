@@ -1,7 +1,9 @@
 import uuid
+from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class TimeStampedModel(models.Model):
@@ -14,13 +16,69 @@ class TimeStampedModel(models.Model):
         abstract = True
 
 
+class SoftDeleteQuerySet(models.QuerySet):
+    """QuerySet with helpers for soft-deleted records."""
+
+    def delete(self):  # type: ignore[override]
+        return self.soft_delete()
+
+    def hard_delete(self):
+        return super().delete()
+
+    def soft_delete(self):
+        return super().update(deleted_at=timezone.now())
+
+    def alive(self):
+        return self.filter(deleted_at__isnull=True)
+
+    def deleted(self):
+        return self.filter(deleted_at__isnull=False)
+
+
+class SoftDeleteManager(models.Manager):
+    """Default manager filtering out soft-deleted rows."""
+
+    def __init__(self, *args, include_deleted: bool = False, **kwargs):
+        self.include_deleted = include_deleted
+        super().__init__(*args, **kwargs)
+
+    def get_queryset(self):  # type: ignore[override]
+        qs = SoftDeleteQuerySet(self.model, using=self._db)
+        if self.include_deleted:
+            return qs
+        return qs.alive()
+
+    def all_with_deleted(self):
+        return SoftDeleteQuerySet(self.model, using=self._db)
+
+    def deleted_only(self):
+        return self.all_with_deleted().deleted()
+
+
 class SoftDeleteModel(models.Model):
     """Optional soft delete support for entities that may be retired."""
 
     deleted_at = models.DateTimeField(null=True, blank=True)
 
+    objects = SoftDeleteManager()
+    all_objects = SoftDeleteManager(include_deleted=True)
+
     class Meta:
         abstract = True
+
+    def delete(self, using=None, keep_parents=False):  # type: ignore[override]
+        self.soft_delete()
+
+    def soft_delete(self):
+        self.deleted_at = timezone.now()
+        self.save(update_fields=["deleted_at"])
+
+    def restore(self):
+        self.deleted_at = None
+        self.save(update_fields=["deleted_at"])
+
+    def hard_delete(self):
+        super().delete()
 
 
 class Language(TimeStampedModel):
@@ -886,7 +944,7 @@ class AnalyticsSnapshot(TimeStampedModel):
     likes = models.PositiveIntegerField(default=0)
     shares = models.PositiveIntegerField(default=0)
     popularity_score = models.DecimalField(
-        max_digits=6, decimal_places=2, default=0
+        max_digits=6, decimal_places=2, default=Decimal("0")
     )
     source = models.CharField(max_length=120, blank=True)
 

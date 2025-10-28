@@ -1,0 +1,388 @@
+[
+  {
+    "model": "catalog.brand",
+    "pk": "dda58b1e-2338-4a70-8b67-4b3fc66f8b2c",
+    "fields": {
+      "slug": "liz-lisa",
+      "names": {"en": "Liz Lisa"},
+      "descriptions": {"en": "Tokyo label blending sweet girly aesthetics with contemporary jirai kei influences."},
+      "country": "JP",
+      "founded_year": 1999,
+      "icon_url": "https://scontent-dfw5-2.cdninstagram.com/v/t51.2885-19/485275047_521890950952564_5860706392685377239_n.jpg?stp=dst-jpg_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-dfw5-2.cdninstagram.com&_nc_cat=104&_nc_oc=Q6cZ2QG4P55WW4XsZ5HH1Rb_zckI_GiKr3VswdTZyU9ZSrlmCLoskBWk16yBK4GYr2DT7Cs&_nc_ohc=k50acUNraYgQ7kNvwE13dAP&_nc_gid=rgiwwcFOegkMNltyrtVilQ&edm=AP4sbd4BAAAA&ccb=7-5&oh=00_Affx9QyeS6K41aAcrnkIIaqmj7q_JaGoijT-Z7W2AB-9Xg&oe=6906C794&_nc_sid=7a9f4b",
+      "official_site_url": "https://www.tokyokawaiilife.jp/",
+      "status": "active",
+      "deleted_at": null,
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.brandlink",
+    "pk": 1,
+    "fields": {
+      "brand": "dda58b1e-2338-4a70-8b67-4b3fc66f8b2c",
+      "link_type": "social",
+      "url": "https://www.instagram.com/lizlisa_official",
+      "is_primary": true,
+      "metadata": {"handle": "@lizlisa_official"},
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.collection",
+    "pk": "51ef7e9d-e9d3-4c8c-a068-3c1d612f7b5c",
+    "fields": {
+      "brand": "dda58b1e-2338-4a70-8b67-4b3fc66f8b2c",
+      "name": "2024 Heart Apron Capsule",
+      "season": "spring",
+      "year": 2024,
+      "description": "Limited run capsule centered on heart-apron motifs and detachable accents.",
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.brandsubstyle",
+    "pk": 1,
+    "fields": {
+      "brand": "dda58b1e-2338-4a70-8b67-4b3fc66f8b2c",
+      "substyle": "3f9b8c12-5e7d-41a6-b15c-7dd6c566a9b0",
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.item",
+    "pk": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+    "fields": {
+      "slug": "heart-apron-jsk-setup",
+      "brand": "dda58b1e-2338-4a70-8b67-4b3fc66f8b2c",
+      "category": "e7d53fa0-7c51-4ad5-913e-bad59db4ed8b",
+      "origin_country": "CN",
+      "default_language": "en",
+      "default_currency": "JPY",
+      "release_year": 2024,
+      "release_date": "2024-02-10",
+      "collaboration": "",
+      "limited_edition": false,
+      "has_matching_set": true,
+      "verified_source": true,
+      "status": "published",
+      "submitted_by": null,
+      "approved_at": "2024-02-01T12:00:00Z",
+      "extra_metadata": {
+        "item_number": "352-6444-0",
+        "original_listing": "https://www.tokyokawaiilife.jp/fs/lizlisaadmin/352-6444-0",
+        "note": "International pricing shown for reference; ships from Japan."
+      },
+      "deleted_at": null,
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemtranslation",
+    "pk": "4a2f13b3-fbeb-4df7-8c6c-4ad8b610deb9",
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "language": "en",
+      "dialect": "en-US",
+      "name": "Heart Apron Jumper-skirt Set-up",
+      "description": "Two-piece set with a heart-print apron top and jumper skirt bottom. Layered lace tiers create a soft jirai kei silhouette and the sleeve frills remove via buttons for seasonal styling.",
+      "pattern": "heart print",
+      "fit": "free size with shirring",
+      "length": "top 71cm / skirt above knee",
+      "occasion": "streetwear",
+      "season": "all-season",
+      "lining": "polyester lining",
+      "closure_type": "back zipper + buttons",
+      "care_instructions": "Dry clean recommended; spot clean lace.",
+      "source": "official",
+      "quality": "verified",
+      "auto_translated": false,
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemtranslation",
+    "pk": "5d3f25e7-71d6-4a49-8dc0-4fc7a4ef09a1",
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "language": "ja",
+      "dialect": "",
+      "name": "ハートエプロンジャンスカセット",
+      "description": "ハート柄エプロンデザインがポイントのセットアップ。重ねレースがガーリーなシルエットを演出し、袖フリルはボタンで取り外し可能。",
+      "pattern": "ハートプリント",
+      "fit": "フリーサイズ（シャーリング入り）",
+      "length": "トップス71cm / スカート膝上",
+      "occasion": "お出かけ",
+      "season": "オールシーズン",
+      "lining": "ポリエステル裏地",
+      "closure_type": "背中ファスナー＋ボタン",
+      "care_instructions": "ドライクリーニング推奨・レースは部分洗い",
+      "source": "official",
+      "quality": "verified",
+      "auto_translated": false,
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemprice",
+    "pk": "6f71b3d4-58a0-45df-9c54-9df8e1831a6f",
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "currency": "JPY",
+      "amount": "15180",
+      "source": "origin",
+      "rate_used": null,
+      "valid_from": "2024-02-10",
+      "valid_to": null,
+      "last_synced_at": "2024-02-10T09:00:00Z",
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemprice",
+    "pk": "7e82c4f5-6ab1-47d0-9e65-af09d2c31470",
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "currency": "USD",
+      "amount": "90.71",
+      "source": "converted",
+      "rate_used": "0.00657",
+      "valid_from": "2024-02-10",
+      "valid_to": null,
+      "last_synced_at": "2024-02-10T09:05:00Z",
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemvariant",
+    "pk": "ae342f3e-2b2b-4d08-9a04-8e49a51bc8af",
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "variant_label": "Smoky Gray Free Size",
+      "sku": "LIZ-352-6444-0-GRAY",
+      "color": "5d5f1c9a-2a0e-4f0f-9a89-8d8f7e6d5c4b",
+      "size_descriptor": "Free",
+      "stock_status": "available",
+      "notes": {"apron": "heart print", "sleeve_frills": "detachable"},
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemvariant",
+    "pk": "c54a70d3-4e3f-40c7-bf71-46932815db9c",
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "variant_label": "Ink Black Free Size",
+      "sku": "LIZ-352-6444-0-BLACK",
+      "color": "4c3b2a19-8c7d-4e5f-b6a7-1f0e9d8c7b6a",
+      "size_descriptor": "Free",
+      "stock_status": "available",
+      "notes": {"lace_layer": "white contrast", "buttons": "pearl heart"},
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemvariant",
+    "pk": "e814b0fb-3ab6-4a2f-9c50-ec49c1bb1a74",
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "variant_label": "Pearl Pink Free Size",
+      "sku": "LIZ-352-6444-0-PINK",
+      "color": "2f4d6b8c-0e1f-4a2b-9c3d-5e6f7a8b9c0d",
+      "size_descriptor": "Free",
+      "stock_status": "limited",
+      "notes": {"hem_lace": "cream", "bow": "removable"},
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemmeasurement",
+    "pk": "12af34bc-56d7-4890-8e7f-9182736455aa",
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "variant": "ae342f3e-2b2b-4d08-9a04-8e49a51bc8af",
+      "is_one_size": true,
+      "bust_cm": "92.00",
+      "waist_cm": "72.00",
+      "hip_cm": "105.00",
+      "length_cm": "71.00",
+      "sleeve_length_cm": "55.00",
+      "hem_cm": null,
+      "heel_height_cm": null,
+      "bag_depth_cm": null,
+      "fit_notes": "Top width 46cm flat (max 102cm with shirring). Bottom waist stretches 59-105cm.",
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemmetadata",
+    "pk": "8ef5a9bc-17de-4c6e-9ac1-5d7f8b9c0d12",
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "pattern": "heart",
+      "sleeve_type": "detachable",
+      "occasion": "casual date",
+      "season": "all-season",
+      "fit": "free size",
+      "length": "mini",
+      "lining": "polyester",
+      "closure_type": "zipper",
+      "care_instructions": "Dry clean only",
+      "inspiration": "Retro maid-inspired apron styling",
+      "ai_confidence": "0.90",
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemfeature",
+    "pk": 1,
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "feature": "a7c8d9e0-f123-4567-89ab-cdef01234567",
+      "is_prominent": true,
+      "notes": "Sleeve frills detach with heart buttons for warm-weather looks.",
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemcolor",
+    "pk": 1,
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "color": "5d5f1c9a-2a0e-4f0f-9a89-8d8f7e6d5c4b",
+      "is_primary": true,
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemcolor",
+    "pk": 2,
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "color": "4c3b2a19-8c7d-4e5f-b6a7-1f0e9d8c7b6a",
+      "is_primary": false,
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemcolor",
+    "pk": 3,
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "color": "2f4d6b8c-0e1f-4a2b-9c3d-5e6f7a8b9c0d",
+      "is_primary": false,
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemfabric",
+    "pk": 1,
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "fabric": "c7f9a1b2-3c4d-4e5f-8a9b-0c1d2e3f4a5b",
+      "percentage": "100.00",
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemsubstyle",
+    "pk": 1,
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "substyle": "3f9b8c12-5e7d-41a6-b15c-7dd6c566a9b0",
+      "weight": "0.85",
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemcollection",
+    "pk": 1,
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "collection": "51ef7e9d-e9d3-4c8c-a068-3c1d612f7b5c",
+      "role": "mainline",
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.itemtag",
+    "pk": 1,
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "tag": "51a73491-4323-4fe4-9197-52f3e4047fe6",
+      "context": "primary",
+      "confidence": "0.92",
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.image",
+    "pk": "b1c2d3e4-f5a6-4b7c-8d9e-0a1b2c3d4e5f",
+    "fields": {
+      "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
+      "brand": "dda58b1e-2338-4a70-8b67-4b3fc66f8b2c",
+      "variant": "ae342f3e-2b2b-4d08-9a04-8e49a51bc8af",
+      "storage_path": "items/2024/heart-apron-jsk/gray/main.jpg",
+      "type": "cover",
+      "caption": "Heart Apron set-up styled with layered lace tights and platform mary janes.",
+      "is_cover": true,
+      "width": 1200,
+      "height": 1800,
+      "file_size_bytes": 410000,
+      "hash_signature": "lizlisa-heartapron-main",
+      "dominant_color": "#C5C5C5",
+      "source": "official",
+      "license": "© Liz Lisa",
+      "deleted_at": null,
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.imagelabel",
+    "pk": 1,
+    "fields": {
+      "image": "b1c2d3e4-f5a6-4b7c-8d9e-0a1b2c3d4e5f",
+      "language": "en",
+      "dialect": "",
+      "text": "Model styling the Smoky Gray Heart Apron jumper-skirt set with layered lace socks.",
+      "source": "official",
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "catalog.imagelabel",
+    "pk": 2,
+    "fields": {
+      "image": "b1c2d3e4-f5a6-4b7c-8d9e-0a1b2c3d4e5f",
+      "language": "ja",
+      "dialect": "",
+      "text": "モデルがスモーキーグレーのハートエプロンセットアップを着用。",
+      "source": "official",
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  }
+]
