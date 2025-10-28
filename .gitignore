@@ -1,6 +1,10 @@
 .vscode/
 .venv/
 __pycache__/
+.pytest_cache/
 media/
+.DS_Store
 .copilot_instruction.md
 .env
+*.py[co]
+*.sqlite3
