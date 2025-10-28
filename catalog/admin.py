@@ -1,19 +1,23 @@
 from django.contrib import admin
-from .models import Brand, Tag, Item
 
-@admin.register(Brand)
+from . import models
+
+
+@admin.register(models.Brand)
 class BrandAdmin(admin.ModelAdmin):
-    list_display = ('name', 'country')
-    search_fields = ('name', 'country')
+    list_display = ("slug", "country", "status")
+    search_fields = ("slug",)
 
-@admin.register(Tag)
+
+@admin.register(models.Tag)
 class TagAdmin(admin.ModelAdmin):
-    list_display = ('name',)
-    search_fields = ('name',)
+    list_display = ("name", "type", "is_featured")
+    list_filter = ("type", "is_featured")
+    search_fields = ("name",)
 
-@admin.register(Item)
+
+@admin.register(models.Item)
 class ItemAdmin(admin.ModelAdmin):
-    list_display = ('name', 'brand', 'category', 'year', 'status')
-    list_filter = ('category', 'brand', 'status', 'tags')
-    search_fields = ('name', 'description')
-    filter_horizontal = ('tags',)
+    list_display = ("slug", "brand", "category", "status", "release_year")
+    list_filter = ("status", "brand", "category")
+    search_fields = ("slug",)
