@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand, CommandError
 
-from catalog.models import Item
+from jiraibrary_server.models import Item
 
 
 class Command(BaseCommand):

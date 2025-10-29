@@ -7,6 +7,7 @@ from io import StringIO
 
 from django.core.management import call_command
 from django.test import TestCase
+from django.urls import reverse
 
 from .forms import ItemForm, ItemPriceForm
 from .models import Item, ItemPrice, ItemStatus
@@ -15,8 +16,8 @@ from .serializers import serialize_item
 
 class SeedDataIntegrityTests(TestCase):
 	fixtures = [
-		"catalog/fixtures/seed_reference.json",
-		"catalog/fixtures/seed_catalog.json",
+		"jiraibrary_server/fixtures/seed_reference.json",
+		"jiraibrary_server/fixtures/seed_catalog.json",
 	]
 
 	def setUp(self) -> None:
@@ -122,3 +123,20 @@ class SeedDataIntegrityTests(TestCase):
 		stdout = StringIO()
 		call_command("check_seed_integrity", stdout=stdout)
 		self.assertIn("Seed data integrity check passed.", stdout.getvalue())
+
+	def test_browse_page_lists_published_items(self) -> None:
+		response = self.client.get(reverse("jiraibrary_server:item_list"))
+		self.assertEqual(response.status_code, 200)
+		self.assertIn("category_sections", response.context)
+		self.assertGreaterEqual(len(response.context["category_sections"]), 1)
+		self.assertContains(response, "Heart Apron Jumper-skirt Set-up")
+
+	def test_browse_page_category_filter(self) -> None:
+		url = reverse("jiraibrary_server:item_list")
+		response = self.client.get(url, {"category": str(self.item.category_id)})
+		self.assertEqual(response.status_code, 200)
+		sections = response.context["category_sections"]
+		self.assertEqual(len(sections), 1)
+		section = sections[0]
+		self.assertEqual(section.category.category_id, self.item.category_id)
+		self.assertTrue(all(entry.category_id == self.item.category_id for entry in section.items))

@@ -26,11 +26,11 @@ Jiraibrary is a catalog of Jirai Kei fashion pieces inspired by projects such as
 ## Project Structure
 
 ```text
-catalog/           # Django app with models, admin, and views
-jiraibrary/        # Project settings, URLs, WSGI/ASGI entry points
-media/             # Local media root (gitignored)
-requirements.txt   # Locked dependency list
-README.md          # Project documentation (this file)
+jiraibrary_server/  # Django app with models, admin, and views
+jiraibrary/         # Project settings, URLs, WSGI/ASGI entry points
+media/              # Local media root (gitignored)
+requirements.txt    # Locked dependency list
+README.md           # Project documentation (this file)
 ```
 
 ### Data Model (MVP)
@@ -96,7 +96,7 @@ python manage.py createsuperuser
 Load the reference taxonomy and sample catalog entry:
 
 ```powershell
-python manage.py loaddata catalog/fixtures/seed_reference.json catalog/fixtures/seed_catalog.json
+python manage.py loaddata jiraibrary_server/fixtures/seed_reference.json jiraibrary_server/fixtures/seed_catalog.json
 ```
 
 You can sanity-check the relationships with the helper command:
@@ -127,7 +127,7 @@ Visit `http://127.0.0.1:8000/` for the catalog and `/admin/` for the Django admi
 python manage.py test
 ```
 
-Fixture smoke tests, soft-delete coverage, serializer snapshots, and form validation live in `catalog/tests.py`. Add new assertions there as the schema grows.
+Fixture smoke tests, soft-delete coverage, serializer snapshots, and form validation live in `jiraibrary_server/test_jiraibrary_server.py`. Add new assertions there as the schema grows.
 
 ## Deployment (AWS Elastic Beanstalk)
 

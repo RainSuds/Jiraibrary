@@ -1,6 +1,6 @@
 [
   {
-    "model": "catalog.brand",
+    "model": "jiraibrary_server.brand",
     "pk": "dda58b1e-2338-4a70-8b67-4b3fc66f8b2c",
     "fields": {
       "slug": "liz-lisa",
@@ -17,7 +17,7 @@
     }
   },
   {
-    "model": "catalog.brandlink",
+    "model": "jiraibrary_server.brandlink",
     "pk": 1,
     "fields": {
       "brand": "dda58b1e-2338-4a70-8b67-4b3fc66f8b2c",
@@ -30,7 +30,7 @@
     }
   },
   {
-    "model": "catalog.collection",
+    "model": "jiraibrary_server.collection",
     "pk": "51ef7e9d-e9d3-4c8c-a068-3c1d612f7b5c",
     "fields": {
       "brand": "dda58b1e-2338-4a70-8b67-4b3fc66f8b2c",
@@ -43,7 +43,7 @@
     }
   },
   {
-    "model": "catalog.brandsubstyle",
+    "model": "jiraibrary_server.brandsubstyle",
     "pk": 1,
     "fields": {
       "brand": "dda58b1e-2338-4a70-8b67-4b3fc66f8b2c",
@@ -53,7 +53,7 @@
     }
   },
   {
-    "model": "catalog.item",
+    "model": "jiraibrary_server.item",
     "pk": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
     "fields": {
       "slug": "heart-apron-jsk-setup",
@@ -82,7 +82,7 @@
     }
   },
   {
-    "model": "catalog.itemtranslation",
+    "model": "jiraibrary_server.itemtranslation",
     "pk": "4a2f13b3-fbeb-4df7-8c6c-4ad8b610deb9",
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -106,7 +106,7 @@
     }
   },
   {
-    "model": "catalog.itemtranslation",
+    "model": "jiraibrary_server.itemtranslation",
     "pk": "5d3f25e7-71d6-4a49-8dc0-4fc7a4ef09a1",
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -130,7 +130,7 @@
     }
   },
   {
-    "model": "catalog.itemprice",
+    "model": "jiraibrary_server.itemprice",
     "pk": "6f71b3d4-58a0-45df-9c54-9df8e1831a6f",
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -146,7 +146,7 @@
     }
   },
   {
-    "model": "catalog.itemprice",
+    "model": "jiraibrary_server.itemprice",
     "pk": "7e82c4f5-6ab1-47d0-9e65-af09d2c31470",
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -162,7 +162,7 @@
     }
   },
   {
-    "model": "catalog.itemvariant",
+    "model": "jiraibrary_server.itemvariant",
     "pk": "ae342f3e-2b2b-4d08-9a04-8e49a51bc8af",
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -177,7 +177,7 @@
     }
   },
   {
-    "model": "catalog.itemvariant",
+    "model": "jiraibrary_server.itemvariant",
     "pk": "c54a70d3-4e3f-40c7-bf71-46932815db9c",
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -192,7 +192,7 @@
     }
   },
   {
-    "model": "catalog.itemvariant",
+    "model": "jiraibrary_server.itemvariant",
     "pk": "e814b0fb-3ab6-4a2f-9c50-ec49c1bb1a74",
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -207,7 +207,7 @@
     }
   },
   {
-    "model": "catalog.itemmeasurement",
+    "model": "jiraibrary_server.itemmeasurement",
     "pk": "12af34bc-56d7-4890-8e7f-9182736455aa",
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -227,7 +227,7 @@
     }
   },
   {
-    "model": "catalog.itemmetadata",
+    "model": "jiraibrary_server.itemmetadata",
     "pk": "8ef5a9bc-17de-4c6e-9ac1-5d7f8b9c0d12",
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -247,7 +247,7 @@
     }
   },
   {
-    "model": "catalog.itemfeature",
+    "model": "jiraibrary_server.itemfeature",
     "pk": 1,
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -259,7 +259,7 @@
     }
   },
   {
-    "model": "catalog.itemcolor",
+    "model": "jiraibrary_server.itemcolor",
     "pk": 1,
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -270,7 +270,7 @@
     }
   },
   {
-    "model": "catalog.itemcolor",
+    "model": "jiraibrary_server.itemcolor",
     "pk": 2,
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -281,7 +281,7 @@
     }
   },
   {
-    "model": "catalog.itemcolor",
+    "model": "jiraibrary_server.itemcolor",
     "pk": 3,
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -292,7 +292,7 @@
     }
   },
   {
-    "model": "catalog.itemfabric",
+    "model": "jiraibrary_server.itemfabric",
     "pk": 1,
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -303,7 +303,7 @@
     }
   },
   {
-    "model": "catalog.itemsubstyle",
+    "model": "jiraibrary_server.itemsubstyle",
     "pk": 1,
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -314,7 +314,7 @@
     }
   },
   {
-    "model": "catalog.itemcollection",
+    "model": "jiraibrary_server.itemcollection",
     "pk": 1,
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -325,7 +325,7 @@
     }
   },
   {
-    "model": "catalog.itemtag",
+    "model": "jiraibrary_server.itemtag",
     "pk": 1,
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -337,7 +337,7 @@
     }
   },
   {
-    "model": "catalog.image",
+    "model": "jiraibrary_server.image",
     "pk": "b1c2d3e4-f5a6-4b7c-8d9e-0a1b2c3d4e5f",
     "fields": {
       "item": "1f8a4d5c-0a9b-4d1c-b2e3-4f5061738192",
@@ -360,7 +360,7 @@
     }
   },
   {
-    "model": "catalog.imagelabel",
+    "model": "jiraibrary_server.imagelabel",
     "pk": 1,
     "fields": {
       "image": "b1c2d3e4-f5a6-4b7c-8d9e-0a1b2c3d4e5f",
@@ -373,7 +373,7 @@
     }
   },
   {
-    "model": "catalog.imagelabel",
+    "model": "jiraibrary_server.imagelabel",
     "pk": 2,
     "fields": {
       "image": "b1c2d3e4-f5a6-4b7c-8d9e-0a1b2c3d4e5f",

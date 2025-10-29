@@ -1,6 +1,6 @@
 [
   {
-    "model": "catalog.language",
+    "model": "jiraibrary_server.language",
     "pk": "en",
     "fields": {
       "english_name": "English",
@@ -12,7 +12,7 @@
     }
   },
   {
-    "model": "catalog.language",
+    "model": "jiraibrary_server.language",
     "pk": "ja",
     "fields": {
       "english_name": "Japanese",
@@ -24,7 +24,7 @@
     }
   },
   {
-    "model": "catalog.currency",
+    "model": "jiraibrary_server.currency",
     "pk": "JPY",
     "fields": {
       "name": "Japanese Yen",
@@ -36,7 +36,7 @@
     }
   },
   {
-    "model": "catalog.currency",
+    "model": "jiraibrary_server.currency",
     "pk": "USD",
     "fields": {
       "name": "US Dollar",
@@ -48,7 +48,7 @@
     }
   },
   {
-    "model": "catalog.category",
+    "model": "jiraibrary_server.category",
     "pk": "e7d53fa0-7c51-4ad5-913e-bad59db4ed8b",
     "fields": {
       "name": "Set-up",
@@ -59,7 +59,7 @@
     }
   },
   {
-    "model": "catalog.subcategory",
+    "model": "jiraibrary_server.subcategory",
     "pk": "0c8c4f50-64a5-4cfb-9fa6-4c706f3f43d7",
     "fields": {
       "category": "e7d53fa0-7c51-4ad5-913e-bad59db4ed8b",
@@ -70,7 +70,7 @@
     }
   },
   {
-    "model": "catalog.substyle",
+    "model": "jiraibrary_server.substyle",
     "pk": "3f9b8c12-5e7d-41a6-b15c-7dd6c566a9b0",
     "fields": {
       "name": "Jirai Kei",
@@ -81,7 +81,7 @@
     }
   },
   {
-    "model": "catalog.color",
+    "model": "jiraibrary_server.color",
     "pk": "5d5f1c9a-2a0e-4f0f-9a89-8d8f7e6d5c4b",
     "fields": {
       "name": "Smoky Gray",
@@ -92,7 +92,7 @@
     }
   },
   {
-    "model": "catalog.color",
+    "model": "jiraibrary_server.color",
     "pk": "4c3b2a19-8c7d-4e5f-b6a7-1f0e9d8c7b6a",
     "fields": {
       "name": "Ink Black",
@@ -103,7 +103,7 @@
     }
   },
   {
-    "model": "catalog.color",
+    "model": "jiraibrary_server.color",
     "pk": "2f4d6b8c-0e1f-4a2b-9c3d-5e6f7a8b9c0d",
     "fields": {
       "name": "Pearl Pink",
@@ -114,7 +114,7 @@
     }
   },
   {
-    "model": "catalog.fabric",
+    "model": "jiraibrary_server.fabric",
     "pk": "c7f9a1b2-3c4d-4e5f-8a9b-0c1d2e3f4a5b",
     "fields": {
       "name": "Polyester Blend",
@@ -124,7 +124,7 @@
     }
   },
   {
-    "model": "catalog.feature",
+    "model": "jiraibrary_server.feature",
     "pk": "a7c8d9e0-f123-4567-89ab-cdef01234567",
     "fields": {
       "name": "Detachable Sleeves",
@@ -137,7 +137,7 @@
     }
   },
   {
-    "model": "catalog.tag",
+    "model": "jiraibrary_server.tag",
     "pk": "51a73491-4323-4fe4-9197-52f3e4047fe6",
     "fields": {
       "name": "Jirai Kei",
@@ -149,7 +149,7 @@
     }
   },
   {
-    "model": "catalog.tagtranslation",
+    "model": "jiraibrary_server.tagtranslation",
     "pk": 1,
     "fields": {
       "tag": "51a73491-4323-4fe4-9197-52f3e4047fe6",

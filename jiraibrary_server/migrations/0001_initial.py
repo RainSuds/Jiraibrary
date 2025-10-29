@@ -196,7 +196,7 @@ class Migration(migrations.Migration):
                 ('season', models.CharField(blank=True, max_length=20)),
                 ('year', models.PositiveSmallIntegerField(blank=True, null=True)),
                 ('description', models.TextField(blank=True)),
-                ('brand', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='collections', to='catalog.brand')),
+                ('brand', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='collections', to='jiraibrary_server.brand')),
             ],
             options={
                 'db_table': 'brand_collection',
@@ -238,7 +238,7 @@ class Migration(migrations.Migration):
                 ('dominant_color', models.CharField(blank=True, max_length=7)),
                 ('source', models.CharField(choices=[('official', 'Official'), ('user_upload', 'User Upload'), ('ai_generated', 'AI Generated')], max_length=20)),
                 ('license', models.CharField(blank=True, max_length=200)),
-                ('brand', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='images', to='catalog.brand')),
+                ('brand', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='images', to='jiraibrary_server.brand')),
             ],
             options={
                 'db_table': 'media_image',
@@ -254,7 +254,7 @@ class Migration(migrations.Migration):
                 ('credit_text', models.CharField(max_length=255)),
                 ('source_url', models.URLField(blank=True)),
                 ('notes', models.TextField(blank=True)),
-                ('image', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='attributions', to='catalog.image')),
+                ('image', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='attributions', to='jiraibrary_server.image')),
             ],
             options={
                 'db_table': 'media_asset_attribution',
@@ -269,7 +269,7 @@ class Migration(migrations.Migration):
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('vector', models.JSONField(blank=True, default=list)),
                 ('algorithm', models.CharField(max_length=120)),
-                ('image', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='embedding', to='catalog.image')),
+                ('image', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='embedding', to='jiraibrary_server.image')),
             ],
             options={
                 'db_table': 'media_image_embedding',
@@ -286,7 +286,7 @@ class Migration(migrations.Migration):
                 ('status', models.CharField(choices=[('pending', 'Pending'), ('running', 'Running'), ('success', 'Success'), ('failed', 'Failed')], default='pending', max_length=20)),
                 ('records_ingested', models.PositiveIntegerField(default=0)),
                 ('error_payload', models.JSONField(blank=True, default=dict)),
-                ('source', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='jobs', to='catalog.ingestionsource')),
+                ('source', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='jobs', to='jiraibrary_server.ingestionsource')),
             ],
             options={
                 'db_table': 'ops_ingestion_job',
@@ -311,11 +311,11 @@ class Migration(migrations.Migration):
                 ('status', models.CharField(choices=[('draft', 'Draft'), ('pending_review', 'Pending Review'), ('published', 'Published'), ('archived', 'Archived')], default='draft', max_length=20)),
                 ('approved_at', models.DateTimeField(blank=True, null=True)),
                 ('extra_metadata', models.JSONField(blank=True, default=dict)),
-                ('brand', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='items', to='catalog.brand')),
-                ('category', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='items', to='catalog.category')),
-                ('default_currency', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='items_default_currency', to='catalog.currency')),
+                ('brand', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='items', to='jiraibrary_server.brand')),
+                ('category', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='items', to='jiraibrary_server.category')),
+                ('default_currency', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='items_default_currency', to='jiraibrary_server.currency')),
                 ('submitted_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='submitted_items', to=settings.AUTH_USER_MODEL)),
-                ('default_language', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='items_default_language', to='catalog.language')),
+                ('default_language', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='items_default_language', to='jiraibrary_server.language')),
             ],
             options={
                 'db_table': 'catalog_item',
@@ -325,7 +325,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='image',
             name='item',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='images', to='catalog.item'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='images', to='jiraibrary_server.item'),
         ),
         migrations.CreateModel(
             name='Comment',
@@ -336,9 +336,9 @@ class Migration(migrations.Migration):
                 ('comment_id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                 ('body', models.TextField()),
                 ('status', models.CharField(choices=[('pending', 'Pending'), ('published', 'Published'), ('hidden', 'Hidden')], default='pending', max_length=20)),
-                ('parent_comment', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='replies', to='catalog.comment')),
+                ('parent_comment', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='replies', to='jiraibrary_server.comment')),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='comments', to=settings.AUTH_USER_MODEL)),
-                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='comments', to='catalog.item')),
+                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='comments', to='jiraibrary_server.item')),
             ],
             options={
                 'db_table': 'social_comment',
@@ -362,7 +362,7 @@ class Migration(migrations.Migration):
                 ('care_instructions', models.TextField(blank=True)),
                 ('inspiration', models.TextField(blank=True)),
                 ('ai_confidence', models.DecimalField(blank=True, decimal_places=2, max_digits=5, null=True)),
-                ('item', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='metadata', to='catalog.item')),
+                ('item', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='metadata', to='jiraibrary_server.item')),
             ],
             options={
                 'db_table': 'catalog_item_metadata',
@@ -380,8 +380,8 @@ class Migration(migrations.Migration):
                 ('size_descriptor', models.CharField(blank=True, max_length=100)),
                 ('stock_status', models.CharField(choices=[('available', 'Available'), ('limited', 'Limited'), ('sold_out', 'Sold Out'), ('unknown', 'Unknown')], default='unknown', max_length=20)),
                 ('notes', models.JSONField(blank=True, default=dict)),
-                ('color', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='variants', to='catalog.color')),
-                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='variants', to='catalog.item')),
+                ('color', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='variants', to='jiraibrary_server.color')),
+                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='variants', to='jiraibrary_server.item')),
             ],
             options={
                 'db_table': 'catalog_item_variant',
@@ -404,8 +404,8 @@ class Migration(migrations.Migration):
                 ('heel_height_cm', models.DecimalField(blank=True, decimal_places=2, max_digits=6, null=True)),
                 ('bag_depth_cm', models.DecimalField(blank=True, decimal_places=2, max_digits=6, null=True)),
                 ('fit_notes', models.TextField(blank=True)),
-                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='measurements', to='catalog.item')),
-                ('variant', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='measurements', to='catalog.itemvariant')),
+                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='measurements', to='jiraibrary_server.item')),
+                ('variant', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='measurements', to='jiraibrary_server.itemvariant')),
             ],
             options={
                 'db_table': 'catalog_item_measurement',
@@ -415,7 +415,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='image',
             name='variant',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='images', to='catalog.itemvariant'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='images', to='jiraibrary_server.itemvariant'),
         ),
         migrations.CreateModel(
             name='ImageLabel',
@@ -426,8 +426,8 @@ class Migration(migrations.Migration):
                 ('dialect', models.CharField(blank=True, max_length=10)),
                 ('text', models.TextField()),
                 ('source', models.CharField(choices=[('official', 'Official'), ('ai', 'AI'), ('user', 'User')], max_length=20)),
-                ('image', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='labels', to='catalog.image')),
-                ('language', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='image_labels', to='catalog.language')),
+                ('image', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='labels', to='jiraibrary_server.image')),
+                ('language', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='image_labels', to='jiraibrary_server.language')),
             ],
             options={
                 'db_table': 'media_image_label',
@@ -462,7 +462,7 @@ class Migration(migrations.Migration):
                 ('action', models.CharField(choices=[('approve', 'Approve'), ('reject', 'Reject'), ('request_changes', 'Request Changes')], max_length=20)),
                 ('notes', models.TextField(blank=True)),
                 ('actor', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='moderation_actions', to=settings.AUTH_USER_MODEL)),
-                ('queue_entry', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='actions', to='catalog.moderationqueue')),
+                ('queue_entry', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='actions', to='jiraibrary_server.moderationqueue')),
             ],
             options={
                 'db_table': 'ops_moderation_action',
@@ -511,8 +511,8 @@ class Migration(migrations.Migration):
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('position', models.PositiveSmallIntegerField(default=0)),
                 ('styling_notes', models.JSONField(blank=True, default=dict)),
-                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='outfit_items', to='catalog.item')),
-                ('set', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='items', to='catalog.outfitset')),
+                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='outfit_items', to='jiraibrary_server.item')),
+                ('set', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='items', to='jiraibrary_server.outfitset')),
             ],
             options={
                 'db_table': 'social_outfit_set_item',
@@ -531,7 +531,7 @@ class Migration(migrations.Migration):
                 ('body', models.TextField()),
                 ('is_verified_purchase', models.BooleanField(default=False)),
                 ('date_submitted', models.DateTimeField(auto_now_add=True)),
-                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='reviews', to='catalog.item')),
+                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='reviews', to='jiraibrary_server.item')),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='reviews', to=settings.AUTH_USER_MODEL)),
             ],
             options={
@@ -564,7 +564,7 @@ class Migration(migrations.Migration):
                 ('subcategory_id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                 ('name', models.CharField(max_length=120)),
                 ('description', models.TextField(blank=True)),
-                ('category', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='subcategories', to='catalog.category')),
+                ('category', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='subcategories', to='jiraibrary_server.category')),
             ],
             options={
                 'db_table': 'catalog_subcategory',
@@ -579,7 +579,7 @@ class Migration(migrations.Migration):
                 ('substyle_id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                 ('name', models.CharField(max_length=120, unique=True)),
                 ('description', models.TextField(blank=True)),
-                ('parent_substyle', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='children', to='catalog.substyle')),
+                ('parent_substyle', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='children', to='jiraibrary_server.substyle')),
             ],
             options={
                 'db_table': 'catalog_substyle',
@@ -593,8 +593,8 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('weight', models.DecimalField(blank=True, decimal_places=2, max_digits=4, null=True)),
-                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_substyles', to='catalog.item')),
-                ('substyle', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='substyle_items', to='catalog.substyle')),
+                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_substyles', to='jiraibrary_server.item')),
+                ('substyle', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='substyle_items', to='jiraibrary_server.substyle')),
             ],
             options={
                 'db_table': 'catalog_item_substyle',
@@ -607,8 +607,8 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('brand', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='brand_substyles', to='catalog.brand')),
-                ('substyle', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='substyle_brands', to='catalog.substyle')),
+                ('brand', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='brand_substyles', to='jiraibrary_server.brand')),
+                ('substyle', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='substyle_brands', to='jiraibrary_server.substyle')),
             ],
             options={
                 'db_table': 'brand_brand_substyle',
@@ -640,8 +640,8 @@ class Migration(migrations.Migration):
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('context', models.CharField(blank=True, max_length=20)),
                 ('confidence', models.DecimalField(blank=True, decimal_places=2, max_digits=4, null=True)),
-                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_tags', to='catalog.item')),
-                ('tag', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tag_items', to='catalog.tag')),
+                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_tags', to='jiraibrary_server.item')),
+                ('tag', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tag_items', to='jiraibrary_server.tag')),
             ],
             options={
                 'db_table': 'catalog_item_tag',
@@ -658,8 +658,8 @@ class Migration(migrations.Migration):
                 ('localized_description', models.TextField(blank=True)),
                 ('source', models.CharField(choices=[('official', 'Official'), ('ai', 'AI'), ('user', 'User')], max_length=20)),
                 ('quality', models.CharField(choices=[('draft', 'Draft'), ('verified', 'Verified')], default='draft', max_length=20)),
-                ('language', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tag_translations', to='catalog.language')),
-                ('tag', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='translations', to='catalog.tag')),
+                ('language', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tag_translations', to='jiraibrary_server.language')),
+                ('tag', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='translations', to='jiraibrary_server.tag')),
             ],
             options={
                 'db_table': 'catalog_tag_translation',
@@ -708,7 +708,7 @@ class Migration(migrations.Migration):
                 ('pronouns', models.CharField(blank=True, max_length=60)),
                 ('location', models.CharField(blank=True, max_length=120)),
                 ('profile_picture', models.URLField(blank=True)),
-                ('preferred_languages', models.ManyToManyField(blank=True, related_name='profiles', to='catalog.language')),
+                ('preferred_languages', models.ManyToManyField(blank=True, related_name='profiles', to='jiraibrary_server.language')),
                 ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='profile', to=settings.AUTH_USER_MODEL)),
             ],
             options={
@@ -726,7 +726,7 @@ class Migration(migrations.Migration):
                 ('url', models.URLField()),
                 ('is_primary', models.BooleanField(default=False)),
                 ('metadata', models.JSONField(blank=True, default=dict)),
-                ('brand', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='links', to='catalog.brand')),
+                ('brand', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='links', to='jiraibrary_server.brand')),
             ],
             options={
                 'db_table': 'brand_link',
@@ -741,7 +741,7 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='favorites', to=settings.AUTH_USER_MODEL)),
-                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='favorites', to='catalog.item')),
+                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='favorites', to='jiraibrary_server.item')),
             ],
             options={
                 'db_table': 'social_favorite',
@@ -761,7 +761,7 @@ class Migration(migrations.Migration):
                 ('shares', models.PositiveIntegerField(default=0)),
                 ('popularity_score', models.DecimalField(decimal_places=2, default=0, max_digits=6)),
                 ('source', models.CharField(blank=True, max_length=120)),
-                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='analytics', to='catalog.item')),
+                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='analytics', to='jiraibrary_server.item')),
             ],
             options={
                 'db_table': 'analytics_snapshot',
@@ -776,8 +776,8 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('role', models.CharField(blank=True, max_length=30)),
-                ('collection', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='collection_items', to='catalog.collection')),
-                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_collections', to='catalog.item')),
+                ('collection', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='collection_items', to='jiraibrary_server.collection')),
+                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_collections', to='jiraibrary_server.item')),
             ],
             options={
                 'db_table': 'catalog_item_collection',
@@ -792,8 +792,8 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('is_primary', models.BooleanField(default=False)),
-                ('color', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='color_items', to='catalog.color')),
-                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_colors', to='catalog.item')),
+                ('color', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='color_items', to='jiraibrary_server.color')),
+                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_colors', to='jiraibrary_server.item')),
             ],
             options={
                 'db_table': 'catalog_item_color',
@@ -808,8 +808,8 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('percentage', models.DecimalField(blank=True, decimal_places=2, max_digits=5, null=True)),
-                ('fabric', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='fabric_items', to='catalog.fabric')),
-                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_fabrics', to='catalog.item')),
+                ('fabric', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='fabric_items', to='jiraibrary_server.fabric')),
+                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_fabrics', to='jiraibrary_server.item')),
             ],
             options={
                 'db_table': 'catalog_item_fabric',
@@ -825,8 +825,8 @@ class Migration(migrations.Migration):
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('is_prominent', models.BooleanField(default=False)),
                 ('notes', models.TextField(blank=True)),
-                ('feature', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='feature_items', to='catalog.feature')),
-                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_features', to='catalog.item')),
+                ('feature', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='feature_items', to='jiraibrary_server.feature')),
+                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_features', to='jiraibrary_server.item')),
             ],
             options={
                 'db_table': 'catalog_item_feature',
@@ -846,8 +846,8 @@ class Migration(migrations.Migration):
                 ('valid_from', models.DateField(blank=True, null=True)),
                 ('valid_to', models.DateField(blank=True, null=True)),
                 ('last_synced_at', models.DateTimeField(blank=True, null=True)),
-                ('currency', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_prices', to='catalog.currency')),
-                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='prices', to='catalog.item')),
+                ('currency', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_prices', to='jiraibrary_server.currency')),
+                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='prices', to='jiraibrary_server.item')),
             ],
             options={
                 'db_table': 'catalog_item_price',
@@ -875,8 +875,8 @@ class Migration(migrations.Migration):
                 ('source', models.CharField(choices=[('official', 'Official'), ('ai', 'AI'), ('user', 'User')], max_length=20)),
                 ('quality', models.CharField(choices=[('draft', 'Draft'), ('verified', 'Verified')], default='draft', max_length=20)),
                 ('auto_translated', models.BooleanField(default=False)),
-                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='translations', to='catalog.item')),
-                ('language', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_translations', to='catalog.language')),
+                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='translations', to='jiraibrary_server.item')),
+                ('language', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_translations', to='jiraibrary_server.language')),
             ],
             options={
                 'db_table': 'catalog_item_translation',
