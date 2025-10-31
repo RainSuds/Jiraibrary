@@ -4,7 +4,7 @@ __pycache__/
 .pytest_cache/
 media/
 .DS_Store
-.copilot_instruction.md
+.copilot_instructions.md
 .env
 *.py[co]
 *.sqlite3
