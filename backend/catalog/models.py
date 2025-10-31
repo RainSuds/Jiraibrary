@@ -71,6 +71,18 @@ class Brand(TimeStampedUUIDModel):
         choices=BrandStatus.choices,
         default=BrandStatus.ACTIVE,
     )
+    styles = models.ManyToManyField(
+        "Style",
+        through="BrandStyle",
+        related_name="brands",
+        blank=True,
+    )
+    substyles = models.ManyToManyField(
+        "Substyle",
+        through="BrandSubstyle",
+        related_name="brands",
+        blank=True,
+    )
 
     class Meta:
         ordering = ["slug"]
@@ -89,6 +101,20 @@ class Brand(TimeStampedUUIDModel):
                 if value:
                     return value
         return self.slug.replace("-", " ").title()
+
+
+class BrandTranslation(TimeStampedUUIDModel):
+    brand = models.ForeignKey(Brand, on_delete=models.CASCADE, related_name="translations")
+    language = models.ForeignKey(Language, on_delete=models.CASCADE, related_name="brand_translations")
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["brand__slug", "language__code"]
+        unique_together = ("brand", "language")
+
+    def __str__(self) -> str:
+        return f"{self.brand.slug} ({self.language.code})"
 
 
 class Collection(TimeStampedUUIDModel):
@@ -117,11 +143,22 @@ class Collection(TimeStampedUUIDModel):
         return f"{self.brand.slug}: {self.name}"
 
 
+class Style(TimeStampedUUIDModel):
+    name = models.CharField(max_length=128, unique=True)
+    slug = models.SlugField(max_length=128, unique=True)
+    description = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Category(TimeStampedUUIDModel):
     name = models.CharField(max_length=128, unique=True)
     slug = models.SlugField(max_length=128, unique=True)
     description = models.TextField(blank=True)
-    is_gendered = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["name"]
@@ -145,22 +182,50 @@ class Subcategory(TimeStampedUUIDModel):
 
 
 class Substyle(TimeStampedUUIDModel):
-    name = models.CharField(max_length=128, unique=True)
-    slug = models.SlugField(max_length=128, unique=True)
-    description = models.TextField(blank=True)
-    parent_substyle = models.ForeignKey(
-        "self",
-        on_delete=models.SET_NULL,
+    style = models.ForeignKey(
+        Style,
+        on_delete=models.CASCADE,
+        related_name="substyles",
         null=True,
         blank=True,
-        related_name="child_substyles",
     )
+    name = models.CharField(max_length=128)
+    slug = models.SlugField(max_length=128, unique=True)
+    description = models.TextField(blank=True)
 
     class Meta:
-        ordering = ["name"]
+        ordering = ["style__name", "name"]
+        unique_together = ("style", "name")
 
     def __str__(self) -> str:
-        return self.name
+        style_name = self.style.name if self.style else "Unassigned"
+        return f"{style_name} · {self.name}"
+
+
+class BrandStyle(TimeStampedUUIDModel):
+    brand = models.ForeignKey(Brand, on_delete=models.CASCADE)
+    style = models.ForeignKey(Style, on_delete=models.CASCADE)
+    is_primary = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["brand__slug", "style__name"]
+        unique_together = ("brand", "style")
+
+    def __str__(self) -> str:
+        return f"{self.brand.slug} → {self.style.name}"
+
+
+class BrandSubstyle(TimeStampedUUIDModel):
+    brand = models.ForeignKey(Brand, on_delete=models.CASCADE)
+    substyle = models.ForeignKey(Substyle, on_delete=models.CASCADE)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["brand__slug", "substyle__name"]
+        unique_together = ("brand", "substyle")
+
+    def __str__(self) -> str:
+        return f"{self.brand.slug} → {self.substyle.name}"
 
 
 class Color(TimeStampedUUIDModel):
@@ -576,12 +641,3 @@ class ItemCollection(TimeStampedUUIDModel):
     class Meta:
         ordering = ["item__slug", "collection__name"]
         unique_together = ("item", "collection")
-
-
-class BrandSubstyle(TimeStampedUUIDModel):
-    brand = models.ForeignKey(Brand, on_delete=models.CASCADE)
-    substyle = models.ForeignKey(Substyle, on_delete=models.CASCADE)
-
-    class Meta:
-        ordering = ["brand__slug", "substyle__name"]
-        unique_together = ("brand", "substyle")

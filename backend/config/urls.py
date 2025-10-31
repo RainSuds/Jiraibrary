@@ -19,12 +19,14 @@ from catalog.views import (  # type: ignore[F401]
     LanguageViewSet,
     SubcategoryViewSet,
     SubstyleViewSet,
+    StyleViewSet,
     TagViewSet,
 )
 
 router = DefaultRouter()
 router.register(r"brands", BrandViewSet)
 router.register(r"categories", CategoryViewSet)
+router.register(r"styles", StyleViewSet)
 router.register(r"subcategories", SubcategoryViewSet)
 router.register(r"substyles", SubstyleViewSet)
 router.register(r"tags", TagViewSet)

@@ -16,7 +16,7 @@ This reference captures the production-ready data model for the platform, expand
 
 ## High-Level Entity Map
 - **Core Catalog:** `Item`, `ItemTranslation`, `ItemPrice`, `ItemVariant`, `ItemMeasurement`, `ItemMetadata`
-- **Reference & Taxonomy:** `Brand`, `BrandLink`, `Collection`, `Category`, `Subcategory`, `Substyle`, `Color`, `Fabric`, `Feature`, `Tag`, `TagTranslation`, `Language`, `Currency`
+- **Reference & Taxonomy:** `Brand`, `BrandLink`, `Collection`, `Style`, `Substyle`, `Category`, `Subcategory`, `Color`, `Fabric`, `Feature`, `Tag`, `TagTranslation`, `Language`, `Currency`
 - **Media:** `Image`, `ImageLabel`, `ImageEmbedding`, `AssetAttribution`
 - **Community & Curation:** `User`, `UserProfile`, `UserRole`, `Review`, `Comment`, `Favorite`, `OutfitSet`, `OutfitSetItem`, `UserFollow`
 - **Bridge Tables:** `ItemTag`, `ItemColor`, `ItemSubstyle`, `ItemFabric`, `ItemCollection`, `ItemSetComponent`
@@ -26,7 +26,7 @@ This reference captures the production-ready data model for the platform, expand
 
 ## Core Catalog Entities
 
-### Item (`jiraibrary_server.item`)
+### Item (`catalog.item`)
 | Column | Type | Constraints / Notes |
 | --- | --- | --- |
 | `item_id` | UUID PK | Primary key |
@@ -51,11 +51,11 @@ This reference captures the production-ready data model for the platform, expand
 
 **Notes:** Rich text content is stored in translation tables; tagging, colors, substyles handled via M2M bridges.
 
-### ItemTranslation (`jiraibrary_server.item_translation`)
+### ItemTranslation (`catalog.item_translation`)
 | Column | Type | Constraints / Notes |
 | --- | --- | --- |
 | `translation_id` | UUID PK | |
-| `item_id` | UUID FK | References `jiraibrary_server.item` on delete cascade |
+| `item_id` | UUID FK | References `catalog.item` on delete cascade |
 | `language_code` | text | FK → `language.code`; unique with `item_id` & `dialect` |
 | `dialect` | text | Optional (e.g., `en-US`) |
 | `name` | text | Localized display name |
@@ -74,7 +74,7 @@ This reference captures the production-ready data model for the platform, expand
 
 **Indexes:** Unique (`item_id`, `language_code`, `dialect`); trigram index on `name` for search.
 
-### ItemPrice (`jiraibrary_server.item_price`)
+### ItemPrice (`catalog.item_price`)
 | Column | Type | Constraints / Notes |
 | --- | --- | --- |
 | `price_id` | UUID PK | |
@@ -89,7 +89,7 @@ This reference captures the production-ready data model for the platform, expand
 
 **Indexes:** `(item_id, currency_code)`, partial index on `source = 'origin'`.
 
-### ItemVariant (`jiraibrary_server.item_variant`)
+### ItemVariant (`catalog.item_variant`)
 | Column | Type | Constraints / Notes |
 | --- | --- | --- |
 | `variant_id` | UUID PK | |
@@ -101,7 +101,7 @@ This reference captures the production-ready data model for the platform, expand
 | `stock_status` | enum(`available`,`limited`,`sold_out`,`unknown`) | Latest known availability |
 | `notes` | jsonb | Additional structured variant data |
 
-### ItemMeasurement (`jiraibrary_server.item_measurement`)
+### ItemMeasurement (`catalog.item_measurement`)
 | Column | Type | Constraints / Notes |
 | --- | --- | --- |
 | `measurement_id` | UUID PK | |
@@ -118,7 +118,7 @@ This reference captures the production-ready data model for the platform, expand
 | `bag_depth_cm` | numeric(6,2) | |
 | `fit_notes` | text | Freeform text for sizing quirks |
 
-### ItemMetadata (`jiraibrary_server.item_metadata`)
+### ItemMetadata (`catalog.item_metadata`)
 | Column | Type | Constraints / Notes |
 | --- | --- | --- |
 | `metadata_id` | UUID PK | |
@@ -152,7 +152,7 @@ This reference captures the production-ready data model for the platform, expand
 | `official_site_url` | text | |
 | `status` | enum(`active`,`discontinued`,`hiatus`) | |
 
-**Supplements:** `BrandLink` table for social/shop URLs with type-labeled rows; `BrandSubstyle` bridge to emphasize aesthetics.
+**Supplements:** `BrandLink` table for social/shop URLs with type-labeled rows.
 
 ### Collection (`brand.collection`)
 | Column | Type | Notes |
@@ -164,27 +164,39 @@ This reference captures the production-ready data model for the platform, expand
 | `year` | smallint | |
 | `description` | text | |
 
-### Category (`jiraibrary_server.category`) & Subcategory (`jiraibrary_server.subcategory`)
+### Category (`catalog.category`) & Subcategory (`catalog.subcategory`)
 
 | Column | Type | Notes |
 | --- | --- | --- |
 | `category_id` | UUID PK | |
 | `name` | text | Unique |
 | `description` | text | |
-| `is_gendered` | boolean | Flag for gender-specific cuts |
 
-`Subcategory` references `category_id` and provides more granular taxonomy (e.g., `JSK`, `Skirt`, `Haori`). Items link to subcategories via `ItemCategoryAssignment` if multi-classification is required.
 
-### Substyle (`jiraibrary_server.substyle`)
- 
+`Subcategory` references `category_id` and provides more granular taxonomy (e.g., `JSK`, `Skirt`). Items link to subcategories via `ItemCategoryAssignment` if multi-classification is required.
+
+### Style (`catalog.style`) & Substyle (`catalog.substyle`)
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `style_id` | UUID PK | |
+| `name` | text | Unique |
+| `slug` | text | Unique routing key |
+| `description` | text | Optional summary |
+
+`Substyle` now references `style_id`, ensuring each aesthetic grouping (e.g., `Jirai Kei`) owns a curated list of variations (e.g., `Subcul`, `Classic`).
+
 | Column | Type | Notes |
 | --- | --- | --- |
 | `substyle_id` | UUID PK | |
-| `name` | text | Unique |
+| `style_id` | UUID FK | References `catalog.style`; cascade deletes |
+| `name` | text | Unique per style |
+| `slug` | text | Unique |
 | `description` | text | |
-| `parent_substyle_id` | UUID FK | Allow nested hierarchies (e.g., `Sweet` → `Sailor`) |
 
-### Color (`jiraibrary_server.color`)
+Items link to substyles through `ItemSubstyle`, enabling per-substyle weighting like before while making the hierarchy explicit at the style level.
+
+### Color (`catalog.color`)
  
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -193,11 +205,11 @@ This reference captures the production-ready data model for the platform, expand
 | `hex_code` | char(7) | `#RRGGBB` |
 | `lch_values` | jsonb | Optional color space for clustering |
 
-### Fabric (`jiraibrary_server.fabric`)
+### Fabric (`catalog.fabric`)
  
 Records canonical fabric types (cotton, chiffon, etc.) and blends to support filtering and sustainability metrics.
 
-### Feature (`jiraibrary_server.feature`)
+### Feature (`catalog.feature`)
  
 Defines repeatable construction and styling elements frequently referenced in listings.
 
@@ -212,7 +224,7 @@ Defines repeatable construction and styling elements frequently referenced in li
 
 Localization follows the translation pattern if required: introduce `FeatureTranslation` mirroring `TagTranslation` (optional until needed).
 
-### Tag (`jiraibrary_server.tag`) & TagTranslation (`jiraibrary_server.tag_translation`)
+### Tag (`catalog.tag`) & TagTranslation (`catalog.tag_translation`)
  
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -322,14 +334,13 @@ Stores follower relationships (`follower_id`, `followed_id`, `created_at`) with 
 
 | Table | Columns | Notes |
 | --- | --- | --- |
-| `jiraibrary_server.item_tag` | `item_id` FK, `tag_id` FK, `context` enum(`primary`,`secondary`), `confidence` numeric(4,2) | GIN index on tag for filtering |
-| `jiraibrary_server.item_color` | `item_id`, `color_id`, `is_primary` boolean | |
-| `jiraibrary_server.item_substyle` | `item_id`, `substyle_id`, `weight` numeric(4,2) | Weight scores aesthetic alignment |
-| `jiraibrary_server.item_fabric` | `item_id`, `fabric_id`, `percentage` numeric(5,2) | Sum constraint via trigger |
-| `jiraibrary_server.item_feature` | `item_id`, `feature_id`, `is_prominent` boolean, `notes` text | Captures construction details like ruffles or detachable sleeves |
-| `jiraibrary_server.item_collection` | `item_id`, `collection_id`, `role` enum(`mainline`,`special`,`collaboration`) | |
+| `catalog.item_tag` | `item_id` FK, `tag_id` FK, `context` enum(`primary`,`secondary`), `confidence` numeric(4,2) | GIN index on tag for filtering |
+| `catalog.item_color` | `item_id`, `color_id`, `is_primary` boolean | |
+| `catalog.item_substyle` | `item_id`, `substyle_id`, `weight` numeric(4,2) | Weight scores aesthetic alignment |
+| `catalog.item_fabric` | `item_id`, `fabric_id`, `percentage` numeric(5,2) | Sum constraint via trigger |
+| `catalog.item_feature` | `item_id`, `feature_id`, `is_prominent` boolean, `notes` text | Captures construction details like ruffles or detachable sleeves |
+| `catalog.item_collection` | `item_id`, `collection_id`, `role` enum(`mainline`,`special`,`collaboration`) | |
 | `social.item_set_component` | `set_id`, `item_id`, `position` integer | Maintains curated order |
-| `brand.brand_substyle` | `brand_id`, `substyle_id` | Connects brands to core aesthetics |
 
 All bridge tables include `created_at` for auditability; composite primary keys enforce uniqueness.
 
@@ -404,7 +415,7 @@ Maintain provenance for scraped/imported data with job-level status, last succes
 - Cron-driven jobs refresh exchange rates and invalidate stale `ItemPrice` rows.
 - Periodic AI translation review: queue flagged rows (`auto_translated = true`, `quality = 'draft'`) for moderator approval.
 - Soft deletes cascade to dependent tables via `deleted_at` triggers where necessary (items → translations, prices, associations).
-- Versioning: consider `temporal_tables` or `audit triggers` on `jiraibrary_server.item` for edit history.
+- Versioning: consider `temporal_tables` or `audit triggers` on `catalog.item` for edit history.
 
 ---
 

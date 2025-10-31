@@ -15,6 +15,9 @@ class ItemFilter(django_filters.FilterSet):
     subcategory = django_filters.CharFilter(field_name="subcategory__name", lookup_expr="iexact")
     subcategory_slug = django_filters.CharFilter(field_name="subcategory__slug", lookup_expr="iexact")
     substyle = django_filters.CharFilter(field_name="substyles__name", lookup_expr="iexact")
+    style = django_filters.CharFilter(field_name="substyles__style__name", lookup_expr="iexact")
+    style_slug = django_filters.CharFilter(field_name="substyles__style__slug", lookup_expr="iexact")
+    style_id = django_filters.UUIDFilter(field_name="substyles__style__id")
     tag = django_filters.CharFilter(field_name="tags__name", lookup_expr="iexact")
     tag_slug = django_filters.CharFilter(field_name="tags__slug", lookup_expr="iexact")
     tag_id = django_filters.UUIDFilter(field_name="tags__id")
@@ -40,6 +43,9 @@ class ItemFilter(django_filters.FilterSet):
             "subcategory",
             "subcategory_slug",
             "substyle",
+            "style",
+            "style_slug",
+            "style_id",
             "tag",
             "tag_slug",
             "tag_id",

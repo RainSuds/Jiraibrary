@@ -27,23 +27,23 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-zinc-50 text-zinc-900 antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-transparent text-slate-900 antialiased`}
       >
         <div className="flex min-h-screen flex-col">
-          <header className="border-b border-zinc-200 bg-white/90 backdrop-blur">
+          <header className="border-b border-rose-100/80 bg-white/75 backdrop-blur">
             <nav className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
-              <Link href="/" className="text-lg font-semibold tracking-tight text-zinc-900">
+              <Link href="/" className="text-lg font-semibold tracking-tight text-rose-700">
                 Jiraibrary
               </Link>
-              <div className="flex items-center gap-6 text-sm font-medium text-zinc-600">
-                <Link href="/search" className="transition hover:text-zinc-900">
+              <div className="flex items-center gap-6 text-sm font-medium text-rose-600">
+                <Link href="/search" className="transition hover:text-rose-800">
                   Browse Catalog
                 </Link>
                 <a
                   href="https://github.com/RainSuds/Jiraibrary"
                   target="_blank"
                   rel="noreferrer"
-                  className="transition hover:text-zinc-900"
+                  className="transition hover:text-rose-800"
                 >
                   GitHub
                 </a>
@@ -51,8 +51,8 @@ export default function RootLayout({
             </nav>
           </header>
           <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">{children}</main>
-          <footer className="border-t border-zinc-200 bg-white/90">
-            <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4 text-sm text-zinc-500">
+          <footer className="border-t border-rose-100/80 bg-white/75">
+            <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4 text-sm text-rose-500">
               <span>© {new Date().getFullYear()} Jiraibrary.</span>
               <span>Curating Jirai Kei fashion references.</span>
             </div>

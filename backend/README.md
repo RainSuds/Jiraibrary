@@ -26,10 +26,11 @@ This Django + Django REST Framework project powers the Jirai Kei fashion archive
    python manage.py migrate
    ```
 
-4. Create a superuser and load any seed data you need:
+4. Create a superuser and load the sample catalog seed (optional but useful for local UI/dev testing):
 
    ```bash
    python manage.py createsuperuser
+   python manage.py seed_catalog
    ```
 
 5. Run the development server:

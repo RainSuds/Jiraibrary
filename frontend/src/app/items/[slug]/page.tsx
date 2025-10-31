@@ -85,14 +85,14 @@ function MetadataGrid({ metadata }: { metadata: ItemMetadataPayload }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="text-lg font-semibold text-zinc-900">Design notes</h2>
+      <h2 className="text-lg font-semibold text-rose-900">Design notes</h2>
       <dl className="grid gap-4 sm:grid-cols-2">
         {entries.map(([key, rawValue]) => (
-          <div key={key} className="rounded-xl border border-zinc-200 bg-white p-4">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+          <div key={key} className="rounded-xl border border-rose-100 bg-white/90 p-4">
+            <dt className="text-xs font-semibold uppercase tracking-wide text-rose-400">
               {labels[key] ?? titleCase(key)}
             </dt>
-            <dd className="mt-1 text-sm text-zinc-700">{String(rawValue)}</dd>
+            <dd className="mt-1 text-sm text-slate-700">{String(rawValue)}</dd>
           </div>
         ))}
       </dl>
@@ -115,7 +115,7 @@ function VariantList({
 
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="text-lg font-semibold text-zinc-900">Variants</h2>
+      <h2 className="text-lg font-semibold text-rose-900">Variants</h2>
       <ul className="flex flex-col gap-3">
         {variants.map((variant) => {
           const colorName = variant.color ? colorById.get(variant.color) : null;
@@ -126,25 +126,25 @@ function VariantList({
           return (
             <li
               key={variant.sku || variant.label}
-              className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
+              className="rounded-2xl border border-rose-100 bg-white/90 p-4 shadow-sm"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p className="text-sm font-semibold text-zinc-900">{variant.label}</p>
-                  <p className="text-xs uppercase tracking-wide text-zinc-400">
+                  <p className="text-sm font-semibold text-rose-900">{variant.label}</p>
+                  <p className="text-xs uppercase tracking-wide text-rose-400">
                     {titleCase(variant.stock_status)}
                   </p>
                 </div>
                 {variant.sku ? (
-                  <span className="text-xs font-mono text-zinc-400">SKU {variant.sku}</span>
+                  <span className="text-xs font-mono text-rose-400">SKU {variant.sku}</span>
                 ) : null}
               </div>
-              <div className="mt-3 flex flex-wrap gap-3 text-sm text-zinc-600">
+              <div className="mt-3 flex flex-wrap gap-3 text-sm text-rose-500">
                 {colorName ? <span>Color: {colorName}</span> : null}
                 {variant.size_descriptor ? <span>Size: {variant.size_descriptor}</span> : null}
               </div>
               {noteEntries.length > 0 ? (
-                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-zinc-600">
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-rose-500">
                   {noteEntries.map(([key, value]) => (
                     <li key={key}>
                       <span className="font-medium">{titleCase(key)}:</span> {String(value)}
@@ -231,12 +231,12 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
 
   return (
     <div className="flex flex-col gap-10">
-      <nav className="flex flex-wrap items-center gap-2 text-sm text-zinc-500">
-        <Link href="/" className="transition hover:text-zinc-900">
+      <nav className="flex flex-wrap items-center gap-2 text-sm text-rose-500">
+        <Link href="/" className="transition hover:text-rose-800">
           Home
         </Link>
         <span aria-hidden="true">/</span>
-        <Link href="/search" className="transition hover:text-zinc-900">
+        <Link href="/search" className="transition hover:text-rose-800">
           Catalog
         </Link>
         {item.brand ? (
@@ -244,28 +244,28 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
             <span aria-hidden="true">/</span>
             <Link
               href={buildSearchUrl({ brand: item.brand.slug })}
-              className="transition hover:text-zinc-900"
+              className="transition hover:text-rose-800"
             >
               {item.brand.name ?? item.brand.slug}
             </Link>
           </>
         ) : null}
         <span aria-hidden="true">/</span>
-        <span className="text-zinc-900">{displayName}</span>
+        <span className="text-rose-900">{displayName}</span>
       </nav>
 
       <header className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-4">
-          <h1 className="text-4xl font-semibold tracking-tight text-zinc-900">
+          <h1 className="text-4xl font-semibold tracking-tight text-rose-900">
             {displayName}
           </h1>
           {primaryPrice ? (
-            <span className="rounded-full bg-zinc-900 px-4 py-1 text-sm font-medium text-white">
+            <span className="rounded-full bg-rose-600 px-4 py-1 text-sm font-medium text-white">
               {primaryPrice}
             </span>
           ) : null}
         </div>
-        <div className="flex flex-wrap gap-3 text-sm text-zinc-600">
+        <div className="flex flex-wrap gap-3 text-sm text-rose-500">
           {item.brand ? <span>{item.brand.name ?? item.brand.slug}</span> : null}
           {item.release_year ? <span>• {item.release_year}</span> : null}
           {item.status ? <span>• {titleCase(item.status)}</span> : null}
@@ -277,37 +277,37 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
       <section className="grid gap-10 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <article className="flex flex-col gap-8">
           <div className="flex flex-col gap-4">
-            <h2 className="text-lg font-semibold text-zinc-900">Overview</h2>
+            <h2 className="text-lg font-semibold text-rose-900">Overview</h2>
             <dl className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-xl border border-zinc-200 bg-white p-4">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              <div className="rounded-xl border border-rose-100 bg-white/90 p-4">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-rose-400">
                   Default language
                 </dt>
-                <dd className="mt-1 text-sm text-zinc-700">
+                <dd className="mt-1 text-sm text-slate-700">
                   {item.default_language ?? "Not specified"}
                 </dd>
               </div>
-              <div className="rounded-xl border border-zinc-200 bg-white p-4">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              <div className="rounded-xl border border-rose-100 bg-white/90 p-4">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-rose-400">
                   Default currency
                 </dt>
-                <dd className="mt-1 text-sm text-zinc-700">
+                <dd className="mt-1 text-sm text-slate-700">
                   {item.default_currency ?? "Not specified"}
                 </dd>
               </div>
-              <div className="rounded-xl border border-zinc-200 bg-white p-4">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              <div className="rounded-xl border border-rose-100 bg-white/90 p-4">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-rose-400">
                   Release year
                 </dt>
-                <dd className="mt-1 text-sm text-zinc-700">
+                <dd className="mt-1 text-sm text-slate-700">
                   {item.release_year ?? "Unknown"}
                 </dd>
               </div>
-              <div className="rounded-xl border border-zinc-200 bg-white p-4">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              <div className="rounded-xl border border-rose-100 bg-white/90 p-4">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-rose-400">
                   Release date
                 </dt>
-                <dd className="mt-1 text-sm text-zinc-700">
+                <dd className="mt-1 text-sm text-slate-700">
                   {item.release_date ?? "Unknown"}
                 </dd>
               </div>
@@ -320,14 +320,14 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
 
           {extraMetadataEntries.length > 0 ? (
             <div className="flex flex-col gap-4">
-              <h2 className="text-lg font-semibold text-zinc-900">Extra metadata</h2>
+              <h2 className="text-lg font-semibold text-rose-900">Extra metadata</h2>
               <dl className="grid gap-3 sm:grid-cols-2">
                 {extraMetadataEntries.map(([key, value]) => (
-                  <div key={key} className="rounded-xl border border-zinc-200 bg-white p-4">
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                  <div key={key} className="rounded-xl border border-rose-100 bg-white/90 p-4">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-rose-400">
                       {titleCase(key)}
                     </dt>
-                    <dd className="mt-1 text-sm text-zinc-700">{String(value)}</dd>
+                    <dd className="mt-1 text-sm text-slate-700">{String(value)}</dd>
                   </div>
                 ))}
               </dl>
@@ -336,23 +336,23 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
 
           {item.translations.length > 0 ? (
             <div className="flex flex-col gap-4">
-              <h2 className="text-lg font-semibold text-zinc-900">Translations</h2>
+              <h2 className="text-lg font-semibold text-rose-900">Translations</h2>
               <ul className="flex flex-col gap-3">
                 {item.translations.map((translation) => (
                   <li
                     key={`${translation.language}-${translation.name}`}
-                    className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
+                    className="rounded-2xl border border-rose-100 bg-white/90 p-4 shadow-sm"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-sm font-semibold text-zinc-900">
+                      <span className="text-sm font-semibold text-rose-900">
                         {translation.name}
                       </span>
-                      <span className="text-xs uppercase tracking-wide text-zinc-400">
+                      <span className="text-xs uppercase tracking-wide text-rose-400">
                         {translation.language}
                       </span>
                     </div>
                     {translation.description ? (
-                      <p className="mt-2 text-sm text-zinc-600">
+                      <p className="mt-2 text-sm text-rose-500">
                         {translation.description}
                       </p>
                     ) : null}
@@ -367,8 +367,8 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
 
         <aside className="flex flex-col gap-8">
           {item.tags.length > 0 ? (
-            <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            <div className="rounded-2xl border border-rose-100 bg-white/90 p-5 shadow-sm">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-rose-500">
                 Tags
               </h2>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -376,7 +376,7 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
                   <Link
                     key={tag.id}
                     href={buildSearchUrl({ tag: tag.id })}
-                    className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600 transition hover:bg-zinc-200 hover:text-zinc-900"
+                    className="rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-600 transition hover:bg-rose-200 hover:text-rose-800"
                   >
                     {tag.name}
                   </Link>
@@ -386,8 +386,8 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
           ) : null}
 
           {item.colors.length > 0 ? (
-            <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            <div className="rounded-2xl border border-rose-100 bg-white/90 p-5 shadow-sm">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-rose-500">
                 Palette
               </h2>
               <div className="mt-3 flex flex-wrap gap-3">
@@ -395,10 +395,10 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
                   <Link
                     key={color.id}
                     href={buildSearchUrl({ color: color.id })}
-                    className="flex items-center gap-2 rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900"
+                    className="flex items-center gap-2 rounded-full border border-rose-200 px-3 py-1 text-xs text-rose-600 transition hover:border-rose-300 hover:text-rose-800"
                   >
                     <span
-                      className="h-3 w-3 rounded-full border border-zinc-200"
+                      className="h-3 w-3 rounded-full border border-rose-200/70"
                       style={{ backgroundColor: color.hex ?? "#d4d4d8" }}
                     />
                     {color.name}
@@ -409,21 +409,21 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
           ) : null}
 
           {item.prices.length > 0 ? (
-            <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            <div className="rounded-2xl border border-rose-100 bg-white/90 p-5 shadow-sm">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-rose-500">
                 Price history
               </h2>
-              <ul className="mt-3 flex flex-col gap-2 text-sm text-zinc-600">
+              <ul className="mt-3 flex flex-col gap-2 text-sm text-rose-500">
                 {item.prices.map((price) => (
                   <li key={`${price.currency}-${price.amount}-${price.source}`}>
-                    <span className="font-medium text-zinc-900">
+                    <span className="font-medium text-rose-900">
                       {formatPrice(price) ?? `${price.amount} ${price.currency}`}
                     </span>{" "}
-                    <span className="text-xs uppercase tracking-wide text-zinc-400">
+                    <span className="text-xs uppercase tracking-wide text-rose-400">
                       {price.source}
                     </span>
                     {price.rate_used ? (
-                      <span className="text-xs text-zinc-400"> • rate {price.rate_used}</span>
+                      <span className="text-xs text-rose-400"> • rate {price.rate_used}</span>
                     ) : null}
                   </li>
                 ))}
@@ -432,14 +432,14 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
           ) : null}
 
           {referenceGroups.length > 0 ? (
-            <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            <div className="rounded-2xl border border-rose-100 bg-white/90 p-5 shadow-sm">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-rose-500">
                 Related searches
               </h2>
               <div className="mt-3 flex flex-col gap-4">
                 {referenceGroups.map((group) => (
                   <div key={group.title} className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-rose-400">
                       {group.title}
                     </span>
                     <div className="flex flex-wrap gap-2">
@@ -447,7 +447,7 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
                         <Link
                           key={`${group.title}-${link.label}`}
                           href={link.href}
-                          className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600 transition hover:bg-zinc-200 hover:text-zinc-900"
+                          className="rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-600 transition hover:bg-rose-200 hover:text-rose-800"
                         >
                           {link.label}
                         </Link>

@@ -19,7 +19,17 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
                 distinct=True,
             )
         )
-        .all()
+        .prefetch_related(
+            "styles",
+            Prefetch(
+                "substyles",
+                queryset=models.Substyle.objects.select_related("style"),
+            ),
+            Prefetch(
+                "translations",
+                queryset=models.BrandTranslation.objects.select_related("language"),
+            ),
+        )
         .order_by("slug")
     )
     lookup_field = "slug"
@@ -48,6 +58,12 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     lookup_field = "slug"
 
 
+class StyleViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = models.Style.objects.all().order_by("name")
+    serializer_class = serializers.StyleSerializer
+    lookup_field = "slug"
+
+
 class SubcategoryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = models.Subcategory.objects.select_related("category").all()
     serializer_class = serializers.SubcategorySerializer
@@ -56,8 +72,9 @@ class SubcategoryViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class SubstyleViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = models.Substyle.objects.select_related("parent_substyle").all()
+    queryset = models.Substyle.objects.select_related("style").all()
     serializer_class = serializers.SubstyleSerializer
+    filterset_fields = ["style__slug"]
     lookup_field = "slug"
 
 
@@ -139,6 +156,26 @@ class ItemViewSet(viewsets.ReadOnlyModelViewSet):
                 "itemcolor_set",
                 queryset=models.ItemColor.objects.select_related("color"),
             ),
+            Prefetch(
+                "itemcollection_set",
+                queryset=models.ItemCollection.objects.select_related("collection__brand"),
+            ),
+            Prefetch(
+                "itemsubstyle_set",
+                queryset=models.ItemSubstyle.objects.select_related("substyle__style"),
+            ),
+            Prefetch(
+                "itemfabric_set",
+                queryset=models.ItemFabric.objects.select_related("fabric"),
+            ),
+            Prefetch(
+                "itemfeature_set",
+                queryset=models.ItemFeature.objects.select_related("feature"),
+            ),
+            Prefetch(
+                "images",
+                queryset=models.Image.objects.order_by("-is_cover", "-created_at"),
+            ),
         )
         .all()
         .distinct()
@@ -191,6 +228,7 @@ class ItemViewSet(viewsets.ReadOnlyModelViewSet):
             "q": normalize(request.query_params.get("q")),
             "brand": normalize(request.query_params.get("brand")),
             "category": normalize(request.query_params.get("category")),
+            "style": normalize(request.query_params.get("style")),
             "tag": normalize(request.query_params.get("tag")),
             "color": normalize(request.query_params.get("color")),
             "collection": normalize(request.query_params.get("collection")),
@@ -274,6 +312,43 @@ class ItemViewSet(viewsets.ReadOnlyModelViewSet):
                     }
                 )
         category_options.sort(key=lambda option: str(option["name"]))
+
+        style_options: list[dict[str, Any]] = []
+        for style in (
+            models.Style.objects.annotate(
+                item_count=Count("substyles__items", filter=published_filter, distinct=True)
+            )
+            .filter(item_count__gt=0)
+            .order_by("name")[:24]
+        ):
+            item_count = int(getattr(style, "item_count", 0) or 0)
+            style_options.append(
+                {
+                    "slug": style.slug,
+                    "name": style.name,
+                    "selected": style.slug == selected.get("style"),
+                    "item_count": item_count,
+                }
+            )
+        style_value = selected.get("style")
+        if style_value and all(option["slug"] != style_value for option in style_options):
+            extra_style = (
+                models.Style.objects.annotate(
+                    item_count=Count("substyles__items", filter=published_filter, distinct=True)
+                )
+                .filter(slug=style_value)
+                .first()
+            )
+            if extra_style and getattr(extra_style, "item_count", 0):
+                style_options.append(
+                    {
+                        "slug": extra_style.slug,
+                        "name": extra_style.name,
+                        "selected": True,
+                        "item_count": int(getattr(extra_style, "item_count", 0) or 0),
+                    }
+                )
+        style_options.sort(key=lambda option: str(option["name"]))
 
         tag_options: list[dict[str, Any]] = []
         for tag in (
@@ -396,6 +471,7 @@ class ItemViewSet(viewsets.ReadOnlyModelViewSet):
         return {
             "brands": brand_options,
             "categories": category_options,
+            "styles": style_options,
             "tags": tag_options,
             "colors": color_options,
             "collections": collection_options,
@@ -425,6 +501,11 @@ class ItemViewSet(viewsets.ReadOnlyModelViewSet):
             tag = models.Tag.objects.filter(id=selected["tag"]).first()
             if tag:
                 active.append({"label": "Tag", "value": tag.name, "param": "tag"})
+
+        if selected.get("style"):
+            style = models.Style.objects.filter(slug=selected["style"]).first()
+            if style:
+                active.append({"label": "Style", "value": style.name, "param": "style"})
 
         if selected.get("color"):
             color = models.Color.objects.filter(id=selected["color"]).first()

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, cast
 
+PLACEHOLDER_IMAGE_URL = "https://placehold.co/600x800?text=Jiraibrary"
+
 from rest_framework import serializers
 
 from . import models
@@ -20,9 +22,46 @@ class CurrencySerializer(serializers.ModelSerializer):
         fields = ["id", "code", "name", "symbol", "is_active"]
 
 
+class StyleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Style
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "description",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class BrandTranslationSerializer(serializers.ModelSerializer):
+    language = LanguageSerializer(read_only=True)
+    language_id = serializers.PrimaryKeyRelatedField(
+        source="language",
+        queryset=models.Language.objects.all(),
+        write_only=True,
+    )
+
+    class Meta:
+        model = models.BrandTranslation
+        fields = [
+            "id",
+            "language",
+            "language_id",
+            "name",
+            "description",
+            "created_at",
+            "updated_at",
+        ]
+
+
 class BrandSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     item_count = serializers.IntegerField(read_only=True)
+    styles = StyleSerializer(many=True, read_only=True)
+    substyles = serializers.SerializerMethodField()
+    translations = BrandTranslationSerializer(many=True, read_only=True)
 
     class Meta:
         model = models.Brand
@@ -37,6 +76,9 @@ class BrandSerializer(serializers.ModelSerializer):
             "icon_url",
             "official_site_url",
             "status",
+            "styles",
+            "substyles",
+            "translations",
             "item_count",
             "created_at",
             "updated_at",
@@ -45,10 +87,33 @@ class BrandSerializer(serializers.ModelSerializer):
     def get_name(self, obj: models.Brand) -> str:
         return obj.display_name()
 
+    def get_substyles(self, obj: models.Brand) -> list[dict[str, Any]]:
+        substyles_manager = getattr(obj, "substyles", None)
+        if substyles_manager is None:
+            return []
+        results: list[dict[str, Any]] = []
+        for substyle in substyles_manager.all():
+            style = substyle.style
+            results.append(
+                {
+                    "id": str(substyle.id),
+                    "name": substyle.name,
+                    "slug": substyle.slug,
+                    "style": {
+                        "id": str(style.id),
+                        "name": style.name,
+                        "slug": style.slug,
+                    }
+                    if style
+                    else None,
+                }
+            )
+        return results
+
 
 class BrandListSerializer(BrandSerializer):
     class Meta(BrandSerializer.Meta):
-        fields = ["slug", "name", "icon_url", "country", "item_count"]
+        fields = ["slug", "name", "icon_url", "country", "item_count", "styles", "substyles"]
 
 
 class BrandReferenceSerializer(BrandSerializer):
@@ -87,7 +152,19 @@ class CategorySerializer(serializers.ModelSerializer):
             "name",
             "slug",
             "description",
-            "is_gendered",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class StyleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Style
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "description",
             "created_at",
             "updated_at",
         ]
@@ -116,7 +193,12 @@ class SubcategorySerializer(serializers.ModelSerializer):
 
 
 class SubstyleSerializer(serializers.ModelSerializer):
-    parent_substyle = serializers.SerializerMethodField()
+    style = StyleSerializer(read_only=True)
+    style_id = serializers.PrimaryKeyRelatedField(
+        source="style",
+        queryset=models.Style.objects.all(),
+        write_only=True,
+    )
 
     class Meta:
         model = models.Substyle
@@ -125,16 +207,11 @@ class SubstyleSerializer(serializers.ModelSerializer):
             "name",
             "slug",
             "description",
-            "parent_substyle",
+            "style",
+            "style_id",
             "created_at",
             "updated_at",
         ]
-
-    def get_parent_substyle(self, obj: models.Substyle) -> dict[str, str] | None:
-        parent = obj.parent_substyle
-        if parent:
-            return {"id": str(parent.pk), "name": parent.name, "slug": parent.slug}
-        return None
 
 
 class ColorSerializer(serializers.ModelSerializer):
@@ -212,6 +289,8 @@ class TagTranslationSerializer(serializers.ModelSerializer):
 
 
 class ImageSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
     class Meta:
         model = models.Image
         fields = [
@@ -232,7 +311,35 @@ class ImageSerializer(serializers.ModelSerializer):
             "license",
             "created_at",
             "updated_at",
+            "url",
         ]
+
+    def get_url(self, obj: models.Image) -> str:
+        storage_path = getattr(obj, "storage_path", "")
+        if storage_path:
+            return storage_path
+        return PLACEHOLDER_IMAGE_URL
+
+
+class ItemImageSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.Image
+        fields = [
+            "id",
+            "url",
+            "type",
+            "is_cover",
+            "width",
+            "height",
+        ]
+
+    def get_url(self, obj: models.Image) -> str:
+        storage_path = getattr(obj, "storage_path", "")
+        if storage_path:
+            return storage_path
+        return PLACEHOLDER_IMAGE_URL
 
 
 class ItemTranslationSerializer(serializers.ModelSerializer):
@@ -335,6 +442,7 @@ class ItemSummarySerializer(serializers.ModelSerializer):
     primary_price = serializers.SerializerMethodField()
     colors = serializers.SerializerMethodField()
     tags = serializers.SerializerMethodField()
+    cover_image = serializers.SerializerMethodField()
 
     class Meta:
         model = models.Item
@@ -350,6 +458,7 @@ class ItemSummarySerializer(serializers.ModelSerializer):
             "colors",
             "tags",
             "status",
+            "cover_image",
         ]
 
     def get_name(self, obj: models.Item) -> str:
@@ -413,6 +522,22 @@ class ItemSummarySerializer(serializers.ModelSerializer):
             for tag in tag_manager.all()
         ]
 
+    def get_cover_image(self, obj: models.Item) -> dict[str, Any]:
+        images_manager: Any = getattr(obj, "images", None)
+        if images_manager is None:
+            return {"id": None, "url": PLACEHOLDER_IMAGE_URL, "is_cover": True}
+        images = list(images_manager.all())
+        if not images:
+            return {"id": None, "url": PLACEHOLDER_IMAGE_URL, "is_cover": True}
+        cover = next((image for image in images if image.is_cover), images[0])
+        serializer = ItemImageSerializer(cover)
+        data = cast(Dict[str, Any], serializer.data)
+        return {
+            "id": str(cover.id) if cover.id else None,
+            "url": data.get("url", PLACEHOLDER_IMAGE_URL),
+            "is_cover": cover.is_cover,
+        }
+
 
 class ItemDetailSerializer(ItemSummarySerializer):
     id = serializers.UUIDField(read_only=True)
@@ -425,6 +550,11 @@ class ItemDetailSerializer(ItemSummarySerializer):
     translations = serializers.SerializerMethodField()
     prices = serializers.SerializerMethodField()
     variants = serializers.SerializerMethodField()
+    collections = serializers.SerializerMethodField()
+    substyles = serializers.SerializerMethodField()
+    fabrics = serializers.SerializerMethodField()
+    features = serializers.SerializerMethodField()
+    gallery = serializers.SerializerMethodField()
 
     class Meta(ItemSummarySerializer.Meta):
         fields = ItemSummarySerializer.Meta.fields + [
@@ -438,6 +568,11 @@ class ItemDetailSerializer(ItemSummarySerializer):
             "translations",
             "prices",
             "variants",
+            "collections",
+            "substyles",
+            "fabrics",
+            "features",
+            "gallery",
         ]
 
     def get_default_language(self, obj: models.Item) -> str | None:
@@ -472,3 +607,124 @@ class ItemDetailSerializer(ItemSummarySerializer):
         if variants_manager is None:
             return []
         return cast(List[Dict[str, Any]], ItemVariantSerializer(variants_manager.all(), many=True).data)
+
+    def get_collections(self, obj: models.Item) -> list[dict]:
+        collection_links: Any = getattr(obj, "itemcollection_set", None)
+        if collection_links is None:
+            return []
+        results: list[dict] = []
+        for link in collection_links.all():
+            collection = getattr(link, "collection", None)
+            if not collection:
+                continue
+            results.append(
+                {
+                    "id": str(collection.id),
+                    "name": collection.name,
+                    "season": collection.season,
+                    "year": collection.year,
+                    "brand_slug": collection.brand.slug if collection.brand else None,
+                    "role": link.role,
+                }
+            )
+        return results
+
+    def get_substyles(self, obj: models.Item) -> list[dict]:
+        substyle_links: Any = getattr(obj, "itemsubstyle_set", None)
+        if substyle_links is None:
+            return []
+        results: list[dict] = []
+        for link in substyle_links.all():
+            substyle = getattr(link, "substyle", None)
+            if not substyle:
+                continue
+            style = getattr(substyle, "style", None)
+            results.append(
+                {
+                    "id": str(substyle.id),
+                    "name": substyle.name,
+                    "slug": substyle.slug,
+                    "style": {
+                        "id": str(style.id),
+                        "name": style.name,
+                        "slug": style.slug,
+                    }
+                    if style
+                    else None,
+                    "weight": str(link.weight) if link.weight is not None else None,
+                }
+            )
+        return results
+
+    def get_fabrics(self, obj: models.Item) -> list[dict]:
+        fabric_links: Any = getattr(obj, "itemfabric_set", None)
+        if fabric_links is None:
+            return []
+        results: list[dict] = []
+        for link in fabric_links.all():
+            fabric = getattr(link, "fabric", None)
+            if not fabric:
+                continue
+            results.append(
+                {
+                    "id": str(fabric.id),
+                    "name": fabric.name,
+                    "percentage": str(link.percentage) if link.percentage is not None else None,
+                }
+            )
+        return results
+
+    def get_features(self, obj: models.Item) -> list[dict]:
+        feature_links: Any = getattr(obj, "itemfeature_set", None)
+        if feature_links is None:
+            return []
+        results: list[dict] = []
+        for link in feature_links.all():
+            feature = getattr(link, "feature", None)
+            if not feature:
+                continue
+            style = getattr(substyle, "style", None)
+            results.append(
+                {
+                    "id": str(feature.id),
+                    "name": feature.name,
+                    "category": feature.category,
+                    "style": {
+                        "id": str(style.id),
+                        "name": style.name,
+                        "slug": style.slug,
+                    }
+                    if style
+                    else None,
+                    "is_prominent": link.is_prominent,
+                    "notes": link.notes,
+                }
+            )
+        return results
+
+    def get_gallery(self, obj: models.Item) -> list[dict]:
+        images_manager: Any = getattr(obj, "images", None)
+        if images_manager is None:
+            return [
+                {
+                    "id": None,
+                    "url": PLACEHOLDER_IMAGE_URL,
+                    "type": models.Image.ImageType.COVER,
+                    "is_cover": True,
+                    "width": None,
+                    "height": None,
+                }
+            ]
+        images = list(images_manager.all())
+        if not images:
+            return [
+                {
+                    "id": None,
+                    "url": PLACEHOLDER_IMAGE_URL,
+                    "type": models.Image.ImageType.COVER,
+                    "is_cover": True,
+                    "width": None,
+                    "height": None,
+                }
+            ]
+        return cast(List[Dict[str, Any]], ItemImageSerializer(images, many=True).data)

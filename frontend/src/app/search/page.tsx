@@ -98,9 +98,9 @@ function ActiveFilterChips({
         <li key={`${filter.param}-${filter.value}`}>
           <Link
             href={buildHref(selected, { [filter.param]: undefined })}
-            className="group inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 py-1.5 text-sm text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900"
+            className="group inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white/90 px-4 py-1.5 text-sm text-rose-600 transition hover:border-rose-300 hover:text-rose-800"
           >
-            <span className="font-medium text-zinc-900 group-hover:text-zinc-900">
+            <span className="font-medium text-rose-800 group-hover:text-rose-900">
               {filter.label}:
             </span>
             <span>{filter.value}</span>
@@ -111,7 +111,7 @@ function ActiveFilterChips({
       <li>
         <Link
           href="/search"
-          className="inline-flex items-center gap-2 rounded-full border border-transparent bg-zinc-100 px-4 py-1.5 text-sm font-medium text-zinc-600 transition hover:bg-zinc-200 hover:text-zinc-900"
+          className="inline-flex items-center gap-2 rounded-full border border-transparent bg-rose-100 px-4 py-1.5 text-sm font-medium text-rose-600 transition hover:bg-rose-200 hover:text-rose-800"
         >
           Clear all
         </Link>
@@ -141,7 +141,7 @@ function FilterSection<T extends { name: string; selected: boolean }>({
 
   return (
     <div className="flex flex-col gap-3">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-rose-500">
         {title}
       </h3>
       <ul className="flex flex-col gap-2">
@@ -158,15 +158,15 @@ function FilterSection<T extends { name: string; selected: boolean }>({
                 href={href}
                 className={`block rounded-xl border px-4 py-3 text-sm transition ${
                   isSelected
-                    ? "border-zinc-900 bg-zinc-900 text-white"
-                    : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
+                    ? "border-rose-600 bg-rose-600 text-white"
+                    : "border-rose-200 bg-white/90 text-rose-600 hover:border-rose-300 hover:text-rose-800"
                 }`}
               >
                 <span className="font-medium">{option.name}</span>
                 {subtitle ? (
                   <span
                     className={`block text-xs ${
-                      isSelected ? "text-zinc-100" : "text-zinc-400"
+                      isSelected ? "text-rose-100" : "text-rose-300"
                     }`}
                   >
                     {subtitle}
@@ -194,7 +194,7 @@ function ColorFilterSection({
 
   return (
     <div className="flex flex-col gap-3">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-rose-500">
         Colors
       </h3>
       <div className="flex flex-wrap gap-2">
@@ -210,12 +210,12 @@ function ColorFilterSection({
               href={href}
               className={`flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition ${
                 isSelected
-                  ? "border-zinc-900 bg-zinc-900 text-white"
-                  : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
+                  ? "border-rose-600 bg-rose-600 text-white"
+                  : "border-rose-200 bg-white/90 text-rose-600 hover:border-rose-300 hover:text-rose-800"
               }`}
             >
               <span
-                className="h-3 w-3 rounded-full border border-zinc-200"
+                className="h-3 w-3 rounded-full border border-rose-200/70"
                 style={{ backgroundColor: option.hex ?? "#d4d4d8" }}
               />
               <span>{option.name}</span>
@@ -233,22 +233,22 @@ function ItemCard({ item }: { item: ItemSummary }) {
   return (
     <Link
       href={`/items/${encodeURIComponent(item.slug)}`}
-      className="group flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-zinc-300 hover:shadow"
+      className="group flex flex-col gap-3 rounded-2xl border border-rose-100 bg-white/90 p-5 shadow-sm transition hover:-translate-y-1 hover:border-rose-200 hover:shadow-lg"
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+        <span className="text-xs font-semibold uppercase tracking-wide text-rose-400">
           {item.brand?.name ?? "Independent"}
         </span>
         {price ? (
-          <span className="text-sm font-medium text-zinc-700 group-hover:text-zinc-900">
+          <span className="text-sm font-medium text-rose-700 group-hover:text-rose-900">
             {price}
           </span>
         ) : null}
       </div>
-      <h3 className="text-lg font-semibold text-zinc-900 group-hover:text-zinc-800">
+      <h3 className="text-lg font-semibold text-rose-900 group-hover:text-rose-700">
         {item.name}
       </h3>
-      <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
+      <div className="flex flex-wrap gap-2 text-xs text-rose-500">
         {item.category ? <span>{item.category.name}</span> : null}
         {item.release_year ? <span>• {item.release_year}</span> : null}
         {item.has_matching_set ? <span>• Matching set</span> : null}
@@ -259,13 +259,13 @@ function ItemCard({ item }: { item: ItemSummary }) {
           {item.tags.slice(0, 4).map((tag) => (
             <span
               key={tag.id}
-              className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600"
+              className="rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-600"
             >
               {tag.name}
             </span>
           ))}
           {item.tags.length > 4 ? (
-            <span className="text-xs text-zinc-400">
+            <span className="text-xs text-rose-400">
               +{item.tags.length - 4} more
             </span>
           ) : null}
@@ -276,7 +276,7 @@ function ItemCard({ item }: { item: ItemSummary }) {
           {item.colors.slice(0, 5).map((color) => (
             <span
               key={color.id}
-              className="h-3 w-3 rounded-full border border-zinc-200"
+              className="h-3 w-3 rounded-full border border-rose-200/70"
               style={{ backgroundColor: color.hex ?? "#d4d4d8" }}
             />
           ))}
@@ -302,21 +302,21 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     <div className="flex flex-col gap-10">
       <section className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-semibold tracking-tight text-zinc-900">
+          <h1 className="text-3xl font-semibold tracking-tight text-rose-900">
             Catalog search
           </h1>
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-rose-500">
             Combine keywords with filters to narrow down specific silhouettes, colors, and collections.
           </p>
         </div>
         <SearchBar initialQuery={normalizedParams.q ?? ""} />
-        <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-500">
+        <div className="flex flex-wrap items-center gap-3 text-sm text-rose-500">
           <span>
             {data.result_count.toLocaleString()} {data.result_count === 1 ? "result" : "results"}
           </span>
           {normalizedParams.q ? (
             <span>
-              for <strong className="font-semibold text-zinc-700">“{normalizedParams.q}”</strong>
+              for <strong className="font-semibold text-rose-700">“{normalizedParams.q}”</strong>
             </span>
           ) : null}
         </div>
@@ -365,8 +365,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 
         <section className="flex flex-col gap-6">
           {data.result_count === 0 ? (
-            <div className="rounded-2xl border border-dashed border-zinc-200 bg-white p-10 text-center text-sm text-zinc-500">
-              <p className="font-medium text-zinc-600">No matches yet.</p>
+            <div className="rounded-2xl border border-dashed border-rose-100 bg-white/90 p-10 text-center text-sm text-rose-500">
+              <p className="font-medium text-rose-600">No matches yet.</p>
               <p>Adjust filters or try a different keyword.</p>
             </div>
           ) : (

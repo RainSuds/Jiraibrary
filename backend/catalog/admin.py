@@ -5,11 +5,30 @@ from django.contrib import admin
 from . import models
 
 
+class BrandTranslationInline(admin.TabularInline):
+    model = models.BrandTranslation
+    extra = 0
+
+
+class BrandStyleInline(admin.TabularInline):
+    model = models.BrandStyle
+    extra = 0
+    autocomplete_fields = ["style"]
+
+
+class BrandSubstyleInline(admin.TabularInline):
+    model = models.BrandSubstyle
+    extra = 0
+    autocomplete_fields = ["substyle"]
+
+
 @admin.register(models.Brand)
 class BrandAdmin(admin.ModelAdmin):
     list_display = ("slug", "status", "country", "founded_year")
-    list_filter = ("status", "country")
+    list_filter = ("status", "country", "styles")
     search_fields = ("slug", "names")
+    filter_horizontal = ("styles", "substyles")
+    inlines = [BrandTranslationInline, BrandStyleInline, BrandSubstyleInline]
 
 
 @admin.register(models.Collection)
@@ -21,9 +40,8 @@ class CollectionAdmin(admin.ModelAdmin):
 
 @admin.register(models.Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "is_gendered")
+    list_display = ("name", "slug")
     search_fields = ("name", "slug")
-    list_filter = ("is_gendered",)
     prepopulated_fields = {"slug": ("name",)}
 
 
@@ -32,6 +50,13 @@ class SubcategoryAdmin(admin.ModelAdmin):
     list_display = ("name", "slug", "category")
     search_fields = ("name", "slug", "category__name")
     list_filter = ("category",)
+    prepopulated_fields = {"slug": ("name",)}
+
+
+@admin.register(models.Style)
+class StyleAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug")
+    search_fields = ("name", "slug")
     prepopulated_fields = {"slug": ("name",)}
 
 
@@ -65,6 +90,42 @@ class ItemVariantInline(admin.TabularInline):
     extra = 0
 
 
+class ItemTagInline(admin.TabularInline):
+    model = models.ItemTag
+    extra = 0
+    autocomplete_fields = ["tag"]
+
+
+class ItemColorInline(admin.TabularInline):
+    model = models.ItemColor
+    extra = 0
+    autocomplete_fields = ["color"]
+
+
+class ItemSubstyleInline(admin.TabularInline):
+    model = models.ItemSubstyle
+    extra = 0
+    autocomplete_fields = ["substyle"]
+
+
+class ItemFabricInline(admin.TabularInline):
+    model = models.ItemFabric
+    extra = 0
+    autocomplete_fields = ["fabric"]
+
+
+class ItemFeatureInline(admin.TabularInline):
+    model = models.ItemFeature
+    extra = 0
+    autocomplete_fields = ["feature"]
+
+
+class ItemCollectionInline(admin.TabularInline):
+    model = models.ItemCollection
+    extra = 0
+    autocomplete_fields = ["collection"]
+
+
 @admin.register(models.Item)
 class ItemAdmin(admin.ModelAdmin):
     list_display = (
@@ -77,8 +138,17 @@ class ItemAdmin(admin.ModelAdmin):
     )
     list_filter = ("status", "brand", "release_year", "limited_edition", "verified_source")
     search_fields = ("slug", "brand__slug", "translations__name")
-    filter_horizontal = ("tags", "colors", "substyles", "fabrics", "features", "collections")
-    inlines = [ItemTranslationInline, ItemPriceInline, ItemVariantInline]
+    inlines = [
+        ItemTranslationInline,
+        ItemPriceInline,
+        ItemVariantInline,
+        ItemTagInline,
+        ItemColorInline,
+        ItemSubstyleInline,
+        ItemFabricInline,
+        ItemFeatureInline,
+        ItemCollectionInline,
+    ]
 
 
 @admin.register(models.Image)
@@ -104,13 +174,30 @@ class CurrencyAdmin(admin.ModelAdmin):
 
 @admin.register(models.Substyle)
 class SubstyleAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "parent_substyle")
-    search_fields = ("name", "slug")
+    list_display = ("name", "slug", "style")
+    search_fields = ("name", "slug", "style__name")
+    list_filter = ("style",)
     prepopulated_fields = {"slug": ("name",)}
+    autocomplete_fields = ["style"]
 
-admin.site.register(models.Color)
-admin.site.register(models.Fabric)
-admin.site.register(models.Feature)
+@admin.register(models.Color)
+class ColorAdmin(admin.ModelAdmin):
+    list_display = ("name", "hex_code")
+    search_fields = ("name", "hex_code")
+
+
+@admin.register(models.Fabric)
+class FabricAdmin(admin.ModelAdmin):
+    list_display = ("name",)
+    search_fields = ("name",)
+
+
+@admin.register(models.Feature)
+class FeatureAdmin(admin.ModelAdmin):
+    list_display = ("name", "category", "is_visible")
+    list_filter = ("category", "is_visible")
+    search_fields = ("name", "description")
+
 admin.site.register(models.ItemMetadata)
 admin.site.register(models.ItemMeasurement)
 admin.site.register(models.ItemTag)
@@ -119,4 +206,3 @@ admin.site.register(models.ItemSubstyle)
 admin.site.register(models.ItemFabric)
 admin.site.register(models.ItemFeature)
 admin.site.register(models.ItemCollection)
-admin.site.register(models.BrandSubstyle)
