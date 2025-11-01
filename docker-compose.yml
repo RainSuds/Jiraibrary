@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: jiraibrary-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jiraibrary
+      POSTGRES_USER: jiraibrary
+      POSTGRES_PASSWORD: jiraibrary
+    ports:
+      - "5432:5432"
+    volumes:
+      - jiraibrary-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jiraibrary"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  jiraibrary-postgres-data:

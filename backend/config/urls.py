@@ -14,6 +14,8 @@ from catalog.views import (  # type: ignore[F401]
     CurrencyViewSet,
     FabricViewSet,
     FeatureViewSet,
+    ItemFavoriteViewSet,
+    ItemSubmissionViewSet,
     ImageViewSet,
     ItemViewSet,
     LanguageViewSet,
@@ -22,6 +24,7 @@ from catalog.views import (  # type: ignore[F401]
     StyleViewSet,
     TagViewSet,
 )
+from users.views import CurrentUserView, GoogleLoginView, LoginView, LogoutView
 
 router = DefaultRouter()
 router.register(r"brands", BrandViewSet)
@@ -38,6 +41,8 @@ router.register(r"features", FeatureViewSet)
 router.register(r"images", ImageViewSet)
 router.register(r"languages", LanguageViewSet)
 router.register(r"currencies", CurrencyViewSet)
+router.register(r"item-favorites", ItemFavoriteViewSet, basename="item-favorite")
+router.register(r"item-submissions", ItemSubmissionViewSet, basename="item-submission")
 
 
 urlpatterns = [
@@ -48,5 +53,9 @@ urlpatterns = [
         SpectacularSwaggerView.as_view(url_name="schema"),
         name="swagger-ui",
     ),
+    path("api/auth/login/", LoginView.as_view(), name="api-login"),
+    path("api/auth/google/", GoogleLoginView.as_view(), name="api-google-login"),
+    path("api/auth/logout/", LogoutView.as_view(), name="api-logout"),
+    path("api/auth/me/", CurrentUserView.as_view(), name="api-current-user"),
     path("api/", include(router.urls)),
 ]

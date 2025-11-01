@@ -2,7 +2,7 @@ type QueryParams = Record<string, string | undefined | null>;
 
 type HeadersInit = globalThis.HeadersInit;
 
-const API_BASE = (() => {
+export const API_BASE = (() => {
   const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
   return base.endsWith("/") ? base : `${base}/`;
 })();
@@ -71,6 +71,13 @@ export type BrandFilterOption = {
   selected: boolean;
   item_count?: number;
   country: string | null;
+};
+
+export type StyleFilterOption = {
+  slug: string;
+  name: string;
+  selected: boolean;
+  item_count?: number;
 };
 
 export type CollectionFilterOption = {
@@ -212,6 +219,7 @@ export type ItemListResponse = {
   filters: {
     brands: BrandFilterOption[];
     categories: FilterOption[];
+    styles: StyleFilterOption[];
     tags: FilterOption[];
     colors: FilterOption[];
     collections: CollectionFilterOption[];
@@ -220,6 +228,7 @@ export type ItemListResponse = {
     q: string | null;
     brand: string | null;
     category: string | null;
+    style: string | null;
     tag: string | null;
     color: string | null;
     collection: string | null;
@@ -270,4 +279,164 @@ export async function getItemDetail(slug: string): Promise<ItemDetail> {
   return fetchJson<ItemDetail>(`api/items/${encodeURIComponent(slug)}/`, undefined, {
     cache: "no-store",
   });
+}
+
+export type UserRole = {
+  name: string;
+  scopes: string[];
+};
+
+export type UserProfile = {
+  id: string;
+  username: string;
+  email: string;
+  is_staff: boolean;
+  display_name: string;
+  role: UserRole | null;
+};
+
+export type AuthResponse = {
+  token: string;
+  user: UserProfile;
+};
+
+function buildAuthHeaders(token: string, extra?: HeadersInit): Headers {
+  const headers = new Headers(extra);
+  headers.set("Accept", "application/json");
+  headers.set("Authorization", `Token ${token}`);
+  return headers;
+}
+
+function buildJsonHeaders(init?: HeadersInit): Headers {
+  const headers = new Headers(init);
+  headers.set("Accept", "application/json");
+  headers.set("Content-Type", "application/json");
+  return headers;
+}
+
+async function handleJsonResponse<T>(response: Response): Promise<T> {
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(text || `Request failed with status ${response.status}`);
+  }
+  return text ? (JSON.parse(text) as T) : (undefined as T);
+}
+
+export async function login(identifier: string, password: string): Promise<AuthResponse> {
+  const response = await fetch(buildUrl("api/auth/login/"), {
+    method: "POST",
+    headers: buildJsonHeaders(),
+    body: JSON.stringify({ username: identifier, password }),
+  });
+  return handleJsonResponse<AuthResponse>(response);
+}
+
+export async function loginWithGoogle(idToken: string): Promise<AuthResponse> {
+  const response = await fetch(buildUrl("api/auth/google/"), {
+    method: "POST",
+    headers: buildJsonHeaders(),
+    body: JSON.stringify({ id_token: idToken }),
+  });
+  return handleJsonResponse<AuthResponse>(response);
+}
+
+export async function logout(token: string): Promise<void> {
+  const response = await fetch(buildUrl("api/auth/logout/"), {
+    method: "POST",
+    headers: buildAuthHeaders(token),
+  });
+  await handleJsonResponse<void>(response);
+}
+
+export async function getCurrentUser(token: string): Promise<UserProfile> {
+  const response = await fetch(buildUrl("api/auth/me/"), {
+    headers: buildAuthHeaders(token),
+    cache: "no-store",
+  });
+  return handleJsonResponse<UserProfile>(response);
+}
+
+export type ItemFavorite = {
+  id: string;
+  item: string;
+  item_detail: ItemSummary;
+  created_at: string;
+};
+
+export async function listFavorites(token: string, params?: { item?: string }): Promise<ItemFavorite[]> {
+  const response = await fetch(
+    buildUrl("api/item-favorites/", params?.item ? { item: params.item } : undefined),
+    {
+      headers: buildAuthHeaders(token),
+      cache: "no-store",
+    }
+  );
+  return handleJsonResponse<ItemFavorite[]>(response);
+}
+
+export async function createFavorite(token: string, slug: string): Promise<ItemFavorite> {
+  const response = await fetch(buildUrl("api/item-favorites/"), {
+    method: "POST",
+    headers: buildJsonHeaders(buildAuthHeaders(token)),
+    body: JSON.stringify({ item: slug }),
+  });
+  return handleJsonResponse<ItemFavorite>(response);
+}
+
+export async function deleteFavorite(token: string, favoriteId: string): Promise<void> {
+  const response = await fetch(buildUrl(`api/item-favorites/${encodeURIComponent(favoriteId)}/`), {
+    method: "DELETE",
+    headers: buildAuthHeaders(token),
+  });
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Failed to remove favorite (${response.status})`);
+  }
+}
+
+export type ItemSubmissionPayload = {
+  id: string;
+  user: string;
+  title: string;
+  brand_name: string;
+  description: string;
+  reference_url: string;
+  image_url: string;
+  tags: string[];
+  status: string;
+  moderator_notes: string | null;
+  linked_item: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateSubmissionPayload = {
+  title: string;
+  brand_name: string;
+  description?: string;
+  reference_url?: string;
+  image_url?: string;
+  tags?: string[];
+};
+
+export async function createSubmission(
+  token: string,
+  payload: CreateSubmissionPayload
+): Promise<ItemSubmissionPayload> {
+  const response = await fetch(buildUrl("api/item-submissions/"), {
+    method: "POST",
+    headers: buildJsonHeaders(buildAuthHeaders(token)),
+    body: JSON.stringify(payload),
+  });
+  return handleJsonResponse<ItemSubmissionPayload>(response);
+}
+
+export async function listSubmissions(token: string): Promise<ItemSubmissionPayload[]> {
+  const response = await fetch(buildUrl("api/item-submissions/"), {
+    headers: buildAuthHeaders(token),
+    cache: "no-store",
+  });
+  return handleJsonResponse<ItemSubmissionPayload[]>(response);
 }

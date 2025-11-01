@@ -707,3 +707,62 @@ class ItemDetailSerializer(ItemSummarySerializer):
                 }
             ]
         return cast(List[Dict[str, Any]], ItemImageSerializer(images, many=True).data)
+
+
+class ItemFavoriteSerializer(serializers.ModelSerializer):
+    item = serializers.SlugRelatedField(slug_field="slug", queryset=models.Item.objects.all())
+    item_detail = ItemSummarySerializer(source="item", read_only=True)
+
+    class Meta:
+        model = models.ItemFavorite
+        fields = ["id", "item", "item_detail", "created_at"]
+        read_only_fields = ["id", "item_detail", "created_at"]
+
+
+class ItemSubmissionSerializer(serializers.ModelSerializer):
+    user = serializers.PrimaryKeyRelatedField(read_only=True)
+    status = serializers.CharField(read_only=True)
+    moderator_notes = serializers.CharField(read_only=True)
+    linked_item = serializers.SlugRelatedField(
+        slug_field="slug",
+        queryset=models.Item.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+
+    class Meta:
+        model = models.ItemSubmission
+        fields = [
+            "id",
+            "user",
+            "title",
+            "brand_name",
+            "description",
+            "reference_url",
+            "image_url",
+            "tags",
+            "status",
+            "moderator_notes",
+            "linked_item",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "user",
+            "status",
+            "moderator_notes",
+            "linked_item",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_tags(self, value: list[Any]) -> list[Any]:
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Expected a list of tag strings.")
+        sanitized: list[str] = []
+        for entry in value:
+            if not entry:
+                continue
+            sanitized.append(str(entry))
+        return sanitized

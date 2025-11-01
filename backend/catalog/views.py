@@ -1,11 +1,13 @@
 """Viewsets powering the public catalog API."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
-from django.db.models import Count, Prefetch, Q
-from rest_framework import viewsets
+from django.db.models import Count, Prefetch, Q, QuerySet
+from rest_framework import mixins, permissions, status, viewsets
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
+from rest_framework.request import Request
 
 from . import filters, models, serializers
 
@@ -524,3 +526,71 @@ class ItemViewSet(viewsets.ReadOnlyModelViewSet):
                 )
 
         return active
+
+
+class ItemFavoriteViewSet(
+    mixins.CreateModelMixin,
+    mixins.DestroyModelMixin,
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    serializer_class = serializers.ItemFavoriteSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = "pk"
+
+    def get_queryset(self):  # type: ignore[override]
+        request = cast(Request, self.request)
+        queryset: QuerySet[models.ItemFavorite] = (
+            models.ItemFavorite.objects.select_related("item", "item__brand", "item__category")
+            .filter(user=request.user)
+            .order_by("-created_at")
+        )
+        item_param = request.query_params.get("item")
+        if item_param:
+            queryset = queryset.filter(Q(item__slug=item_param) | Q(item__id=item_param))
+        return queryset
+
+    def create(self, request, *args, **kwargs):  # type: ignore[override]
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        item = serializer.validated_data["item"]
+        favorite, created = models.ItemFavorite.objects.get_or_create(
+            user=request.user,
+            item=item,
+        )
+        output = self.get_serializer(favorite)
+        return Response(output.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+class ItemSubmissionViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet,
+):
+    serializer_class = serializers.ItemSubmissionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        request = cast(Request, self.request)
+        queryset: QuerySet[models.ItemSubmission] = models.ItemSubmission.objects.select_related(
+            "user",
+            "linked_item",
+        )
+        if not request.user.is_staff:
+            queryset = queryset.filter(user=request.user)
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    def update(self, request, *args, **kwargs):  # type: ignore[override]
+        if not request.user.is_staff:
+            raise PermissionDenied("Only staff users may modify submissions.")
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):  # type: ignore[override]
+        if not request.user.is_staff:
+            raise PermissionDenied("Only staff users may modify submissions.")
+        return super().partial_update(request, *args, **kwargs)

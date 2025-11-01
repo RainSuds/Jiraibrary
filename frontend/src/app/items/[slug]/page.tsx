@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import FavoriteToggle from "@/components/favorite-toggle";
 import ItemGallery from "@/components/item-gallery";
 import {
   ColorSummary,
@@ -287,6 +288,7 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
               {primaryPrice}
             </span>
           ) : null}
+          <FavoriteToggle itemSlug={item.slug} />
         </div>
         <div className="flex flex-wrap gap-3 text-sm text-rose-500">
           {item.brand ? <span>{item.brand.name ?? item.brand.slug}</span> : null}

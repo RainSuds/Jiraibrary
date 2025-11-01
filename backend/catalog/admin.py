@@ -179,6 +179,7 @@ class SubstyleAdmin(admin.ModelAdmin):
     prepopulated_fields = {"slug": ("name",)}
     autocomplete_fields = ["style"]
 
+
 @admin.register(models.Color)
 class ColorAdmin(admin.ModelAdmin):
     list_display = ("name", "hex_code")
@@ -196,6 +197,23 @@ class FeatureAdmin(admin.ModelAdmin):
     list_display = ("name", "category", "is_visible")
     list_filter = ("category", "is_visible")
     search_fields = ("name", "description")
+
+
+@admin.register(models.ItemFavorite)
+class ItemFavoriteAdmin(admin.ModelAdmin):
+    list_display = ("user", "item", "created_at")
+    list_filter = ("created_at",)
+    search_fields = ("user__username", "item__slug", "item__brand__slug")
+    autocomplete_fields = ["user", "item"]
+
+
+@admin.register(models.ItemSubmission)
+class ItemSubmissionAdmin(admin.ModelAdmin):
+    list_display = ("title", "user", "status", "created_at")
+    list_filter = ("status", "created_at")
+    search_fields = ("title", "brand_name", "user__username")
+    autocomplete_fields = ["user", "linked_item"]
+
 
 admin.site.register(models.ItemMetadata)
 admin.site.register(models.ItemMeasurement)

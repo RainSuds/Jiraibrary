@@ -641,3 +641,58 @@ class ItemCollection(TimeStampedUUIDModel):
     class Meta:
         ordering = ["item__slug", "collection__name"]
         unique_together = ("item", "collection")
+
+
+class ItemFavorite(TimeStampedUUIDModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="favorite_items",
+    )
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="favorites")
+
+    class Meta:
+        ordering = ["-created_at"]
+        unique_together = ("user", "item")
+
+    def __str__(self) -> str:
+        return f"{self.user} ❤ {self.item.slug}"
+
+
+class ItemSubmission(TimeStampedUUIDModel):
+    class SubmissionStatus(models.TextChoices):
+        PENDING = "pending", _("Pending")
+        UNDER_REVIEW = "under_review", _("Under Review")
+        APPROVED = "approved", _("Approved")
+        REJECTED = "rejected", _("Rejected")
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="item_submissions",
+    )
+    title = models.CharField(max_length=255)
+    brand_name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    reference_url = models.URLField(blank=True)
+    image_url = models.URLField(blank=True)
+    tags = models.JSONField(default=list, blank=True)
+    status = models.CharField(
+        max_length=16,
+        choices=SubmissionStatus.choices,
+        default=SubmissionStatus.PENDING,
+    )
+    moderator_notes = models.TextField(blank=True)
+    linked_item = models.ForeignKey(
+        Item,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="submission_sources",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.title} ({self.status})"

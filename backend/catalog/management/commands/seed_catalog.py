@@ -10,6 +10,10 @@ from django.utils.text import slugify
 
 from catalog import models
 
+# ---------------------------------------------------------------------------
+# Seed definitions
+# ---------------------------------------------------------------------------
+
 STYLE_DEFINITIONS: Dict[str, List[str]] = {
     "Lolita": ["Sweet", "Classic", "Gothic"],
     "Jirai Kei": ["Classic", "Subcul", "Jersey"],
@@ -126,28 +130,91 @@ CATEGORY_SEED: Dict[str, Dict[str, Any]] = {
 }
 
 BRAND_SEED: Dict[str, Dict[str, Any]] = {
+    "acdc-rag": {
+        "country": "JP",
+        "names": {"en": "ACDC Rag", "ja": "ACDC Rag"},
+        "descriptions": {"en": "Spreading KAWAII from Harajuku to the world."},
+        "founded_year": 1973,
+        "icon_url": "https://placehold.co/400x400?text=ACDC+Rag",
+        "official_site_url": "https://acdcrag.com/en",
+        "status": models.Brand.BrandStatus.ACTIVE,
+    },
+    "dear-my-love": {
+        "country": "JP",
+        "names": {"en": "DearMyLove", "ja": "DearMyLove"},
+        "descriptions": {
+            "ja": "量産型・地雷系・闇属性・ガーリーと何でも揃っちゃう、ずっと可愛くいたい女の子の味方ブランド",
+            "en": "A brand supporting girls who want to stay cute forever with looks spanning ryousangata, jirai, dark, and girly styles.",
+        },
+        "founded_year": 2008,
+        "icon_url": "https://placehold.co/400x400?text=DearMyLove",
+        "official_site_url": "https://dreamvs.jp/pages/brand_dearmylove_",
+        "status": models.Brand.BrandStatus.ACTIVE,
+    },
+    "dimmoire": {
+        "country": "JP",
+        "names": {"en": "DimMoire", "ja": "DimMoire"},
+        "descriptions": {
+            "en": (
+                "DimMoire is a brand with the concept of clothes that'll make you want to show off,"
+                " blending gothic elements into everyday life."
+            )
+        },
+        "founded_year": 2020,
+        "icon_url": "https://placehold.co/400x400?text=DimMoire",
+        "official_site_url": "https://acrotokyo-global.com/index_en_USD_2-5.html",
+        "status": models.Brand.BrandStatus.ACTIVE,
+    },
     "liz-lisa": {
         "country": "JP",
         "names": {"en": "Liz Lisa", "ja": "リズリサ"},
+        "descriptions": {"en": ""},
+        "founded_year": 1999,
+        "icon_url": "https://placehold.co/400x400?text=Liz+Lisa",
+        "official_site_url": "https://www.tokyokawaiilife.jp/",
         "status": models.Brand.BrandStatus.ACTIVE,
     },
     "rojita": {
         "country": "JP",
         "names": {"en": "Rojita", "ja": "ロジータ"},
+        "descriptions": {
+            "en": (
+                "Clothing for girls transitioning from teens to their twenties with a cute adult style,"
+                " blending seasonal trends and retro-girly charm."
+            )
+        },
+        "founded_year": 2001,
+        "icon_url": "https://placehold.co/400x400?text=Rojita",
+        "official_site_url": "https://rlab-store.jp/",
         "status": models.Brand.BrandStatus.ACTIVE,
     },
 }
 
 BRAND_TAXONOMY_SEED: Dict[str, Dict[str, Any]] = {
+    "acdc-rag": {
+        "styles": ["jirai-kei", "tenshi-kaiwai"],
+        "primary_style": "jirai-kei",
+        "substyles": ["jersey", "subcul"],
+    },
+    "dear-my-love": {
+        "styles": ["jirai-kei", "tenshi-kaiwai"],
+        "primary_style": "jirai-kei",
+        "substyles": ["classic", "jersey"],
+    },
+    "dimmoire": {
+        "styles": ["jirai-kei"],
+        "primary_style": "jirai-kei",
+        "substyles": ["subcul"],
+    },
     "liz-lisa": {
-        "styles": ["lolita"],
-        "primary_style": "lolita",
-        "substyles": ["sweet", "classic"],
+        "styles": ["jirai-kei", "gyaru"],
+        "primary_style": "jirai-kei",
+        "substyles": ["classic", "himekaji"],
     },
     "rojita": {
-        "styles": ["girly-kei"],
-        "primary_style": "girly-kei",
-        "substyles": ["french-girly"],
+        "styles": ["jirai-kei", "suna-kei"],
+        "primary_style": "jirai-kei",
+        "substyles": ["classic"],
     },
 }
 
@@ -159,6 +226,10 @@ class Command(BaseCommand):
         seed_catalog()
         self.stdout.write(self.style.SUCCESS("Catalog seed data loaded."))
 
+
+# ---------------------------------------------------------------------------
+# Seed orchestration
+# ---------------------------------------------------------------------------
 
 def seed_catalog() -> None:
     """Populate a minimal set of catalog records used by the sample frontend."""
@@ -189,6 +260,10 @@ def seed_catalog() -> None:
             collections=collections,
         )
 
+
+# ---------------------------------------------------------------------------
+# Seed helpers
+# ---------------------------------------------------------------------------
 
 def _ensure_languages() -> dict[str, models.Language]:
     primary = {
@@ -231,24 +306,33 @@ def _ensure_currencies() -> dict[str, models.Currency]:
 def _create_brands() -> dict[str, models.Brand]:
     brands: dict[str, models.Brand] = {}
     for slug, attrs in BRAND_SEED.items():
+        defaults = {
+            "country": attrs["country"],
+            "names": dict(attrs["names"]),
+            "status": attrs["status"],
+            "descriptions": dict(attrs.get("descriptions", {})),
+            "founded_year": attrs.get("founded_year"),
+            "icon_url": attrs.get("icon_url", ""),
+            "official_site_url": attrs.get("official_site_url", ""),
+        }
         brand, _ = models.Brand.objects.get_or_create(
             slug=slug,
-            defaults={
-                "country": attrs["country"],
-                "names": attrs["names"],
-                "status": attrs["status"],
-            },
+            defaults=defaults,
         )
         changed_fields: List[str] = []
-        if brand.country != attrs["country"]:
-            brand.country = str(attrs["country"])
-            changed_fields.append("country")
-        if brand.names != attrs["names"]:
-            brand.names = dict(attrs["names"])
-            changed_fields.append("names")
-        if brand.status != attrs["status"]:
-            brand.status = attrs["status"]
-            changed_fields.append("status")
+        field_updates: Dict[str, Any] = {
+            "country": str(attrs["country"]),
+            "names": dict(attrs["names"]),
+            "descriptions": dict(attrs.get("descriptions", {})),
+            "founded_year": attrs.get("founded_year"),
+            "icon_url": attrs.get("icon_url", ""),
+            "official_site_url": attrs.get("official_site_url", ""),
+            "status": attrs["status"],
+        }
+        for field, value in field_updates.items():
+            if getattr(brand, field) != value:
+                setattr(brand, field, value)
+                changed_fields.append(field)
         if changed_fields:
             brand.save(update_fields=changed_fields)
         brands[slug] = brand
@@ -489,6 +573,7 @@ def _sync_brand_taxonomy(
             continue
 
         primary_style_slug = payload.get("primary_style")
+        desired_style_ids: set[Any] = set()
         for style_slug in payload.get("styles", []):
             style = styles.get(style_slug)
             if not style:
@@ -499,11 +584,17 @@ def _sync_brand_taxonomy(
                 style=style,
                 defaults={"is_primary": is_primary},
             )
+            desired_style_ids.add(style.id)
             if not created and brand_style.is_primary != is_primary:
                 brand_style.is_primary = is_primary
                 brand_style.save(update_fields=["is_primary"])
+        if desired_style_ids:
+            models.BrandStyle.objects.filter(brand=brand).exclude(style_id__in=desired_style_ids).delete()
+        else:
+            models.BrandStyle.objects.filter(brand=brand).delete()
 
         substyle_notes = payload.get("substyle_notes", {})
+        desired_substyle_ids: set[Any] = set()
         for sub_slug in payload.get("substyles", []):
             substyle = substyles.get(sub_slug)
             if not substyle:
@@ -516,9 +607,14 @@ def _sync_brand_taxonomy(
                 substyle=substyle,
                 defaults={"notes": note},
             )
+            desired_substyle_ids.add(substyle.id)
             if not created and note and brand_substyle.notes != note:
                 brand_substyle.notes = note
                 brand_substyle.save(update_fields=["notes"])
+        if desired_substyle_ids:
+            models.BrandSubstyle.objects.filter(brand=brand).exclude(substyle_id__in=desired_substyle_ids).delete()
+        else:
+            models.BrandSubstyle.objects.filter(brand=brand).delete()
 
 
 def _create_items(

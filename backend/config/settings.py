@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import environ
 
@@ -14,6 +14,7 @@ env = environ.Env(
     SECRET_KEY=(str, "changeme-in-production"),
     ALLOWED_HOSTS=(list, ["localhost", "127.0.0.1"]),
     CORS_ALLOW_ALL_ORIGINS=(bool, True),
+    GOOGLE_OAUTH_CLIENT_IDS=(list, []),
 )
 
 # Read .env file if it exists
@@ -24,7 +25,7 @@ if _environ_file.exists():
 
 DEBUG = env.bool("DEBUG")
 SECRET_KEY = env("SECRET_KEY")
-ALLOWED_HOSTS: list[str] = env.list("ALLOWED_HOSTS")
+ALLOWED_HOSTS: list[str] = cast(list[str], env.list("ALLOWED_HOSTS"))
 
 
 INSTALLED_APPS = [
@@ -131,6 +132,11 @@ else:
     CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+
+GOOGLE_OAUTH_CLIENT_IDS: list[str] = cast(
+    list[str],
+    env.list("GOOGLE_OAUTH_CLIENT_IDS", default=[]),  # type: ignore[arg-type]
+)
 
 
 AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default=None)

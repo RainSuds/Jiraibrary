@@ -3,6 +3,8 @@
 Jiraibrary is a visual catalog and searchable archive of **Jirai Kei** fashion, inspired by projects like [Lolibrary](https://lolibrary.org/).  
 The MVP focuses on searchable data, clear item presentation, and an admin workflow that enables **AI-assisted data entry** in future updates.
 
+For Docker-based local PostgreSQL instructions see [`docs/local-postgres.md`](docs/local-postgres.md).
+
 ---
 
 ## 🧭 App Flow Overview
@@ -84,6 +86,8 @@ frontend/
     └── styles/           # Tailwind and custom CSS
 
 README.md
+
+### Day 2 – Models & API
 
 ### Day 2 – Models & API
 
@@ -199,6 +203,14 @@ README.md
 - Community contributions: user submissions & moderation queue  
 - User accounts & favorites system  
 - Donation / premium tier to sustain hosting costs
+
+---
+
+## Google Authentication
+
+- Backend: set `GOOGLE_OAUTH_CLIENT_IDS` (comma-separated list) to the Google OAuth client IDs that may authenticate with the API.
+- Frontend: set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` to the same web client ID so the Google login button can initialize properly.
+- Install backend dependency `google-auth` (already listed in `backend/requirements.txt`) and restart both services after updating environment variables.
 
 ---
 
