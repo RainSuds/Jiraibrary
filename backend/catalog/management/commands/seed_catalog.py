@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any, Dict, List
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
@@ -9,8 +10,7 @@ from django.utils.text import slugify
 
 from catalog import models
 
-
-STYLE_DEFINITIONS: dict[str, List[str]] = {
+STYLE_DEFINITIONS: Dict[str, List[str]] = {
     "Lolita": ["Sweet", "Classic", "Gothic"],
     "Jirai Kei": ["Classic", "Subcul", "Jersey"],
     "Suna Kei": [],
@@ -34,7 +34,7 @@ STYLE_DEFINITIONS: dict[str, List[str]] = {
 }
 
 
-STYLE_SEED: dict[str, dict[str, object]] = {
+STYLE_SEED: Dict[str, Dict[str, Any]] = {
     slugify(style_name): {
         "name": style_name,
         "substyles": {slugify(substyle_name): substyle_name for substyle_name in substyle_names},
@@ -42,7 +42,7 @@ STYLE_SEED: dict[str, dict[str, object]] = {
     for style_name, substyle_names in STYLE_DEFINITIONS.items()
 }
 
-CATEGORY_SEED: dict[str, dict[str, object]] = {
+CATEGORY_SEED: Dict[str, Dict[str, Any]] = {
     "dress": {
         "name": "Dress",
         "subcategories": {
@@ -125,6 +125,32 @@ CATEGORY_SEED: dict[str, dict[str, object]] = {
     },
 }
 
+BRAND_SEED: Dict[str, Dict[str, Any]] = {
+    "liz-lisa": {
+        "country": "JP",
+        "names": {"en": "Liz Lisa", "ja": "リズリサ"},
+        "status": models.Brand.BrandStatus.ACTIVE,
+    },
+    "rojita": {
+        "country": "JP",
+        "names": {"en": "Rojita", "ja": "ロジータ"},
+        "status": models.Brand.BrandStatus.ACTIVE,
+    },
+}
+
+BRAND_TAXONOMY_SEED: Dict[str, Dict[str, Any]] = {
+    "liz-lisa": {
+        "styles": ["lolita"],
+        "primary_style": "lolita",
+        "substyles": ["sweet", "classic"],
+    },
+    "rojita": {
+        "styles": ["girly-kei"],
+        "primary_style": "girly-kei",
+        "substyles": ["french-girly"],
+    },
+}
+
 
 class Command(BaseCommand):
     help = "Seed the catalog with a small set of brands, items, and related reference data."
@@ -144,6 +170,8 @@ def seed_catalog() -> None:
         subcategories = _create_subcategories(categories)
         styles = _create_styles()
         substyles = _create_substyles(styles)
+        _sync_brand_translations(brands=brands, languages=languages)
+        _sync_brand_taxonomy(brands=brands, styles=styles, substyles=substyles)
         colors = _create_colors()
         fabrics = _create_fabrics()
         features = _create_features()
@@ -201,20 +229,8 @@ def _ensure_currencies() -> dict[str, models.Currency]:
 
 
 def _create_brands() -> dict[str, models.Brand]:
-    seed = {
-        "liz-lisa": {
-            "country": "JP",
-            "names": {"en": "Liz Lisa"},
-            "status": models.Brand.BrandStatus.ACTIVE,
-        },
-        "rojita": {
-            "country": "JP",
-            "names": {"en": "Rojita"},
-            "status": models.Brand.BrandStatus.ACTIVE,
-        },
-    }
     brands: dict[str, models.Brand] = {}
-    for slug, attrs in seed.items():
+    for slug, attrs in BRAND_SEED.items():
         brand, _ = models.Brand.objects.get_or_create(
             slug=slug,
             defaults={
@@ -223,6 +239,18 @@ def _create_brands() -> dict[str, models.Brand]:
                 "status": attrs["status"],
             },
         )
+        changed_fields: List[str] = []
+        if brand.country != attrs["country"]:
+            brand.country = str(attrs["country"])
+            changed_fields.append("country")
+        if brand.names != attrs["names"]:
+            brand.names = dict(attrs["names"])
+            changed_fields.append("names")
+        if brand.status != attrs["status"]:
+            brand.status = attrs["status"]
+            changed_fields.append("status")
+        if changed_fields:
+            brand.save(update_fields=changed_fields)
         brands[slug] = brand
     return brands
 
@@ -402,6 +430,95 @@ def _create_collections(brands: dict[str, models.Brand]) -> dict[str, models.Col
             )
             collections[f"{brand_slug}:{collection.name}"] = collection
     return collections
+
+
+def _sync_brand_translations(
+    *,
+    brands: Dict[str, models.Brand],
+    languages: Dict[str, models.Language],
+) -> None:
+    for brand_slug, brand in brands.items():
+        fallback_names = BRAND_SEED.get(brand_slug, {}).get("names", {})
+        fallback_descriptions = BRAND_SEED.get(brand_slug, {}).get("descriptions", {})
+        for code, language in languages.items():
+            localized_name = None
+            if isinstance(brand.names, dict):
+                localized_name = brand.names.get(code) or brand.names.get("en")
+            if localized_name is None and isinstance(fallback_names, dict):
+                localized_name = fallback_names.get(code) or fallback_names.get("en")
+            if localized_name is None:
+                localized_name = brand.slug.replace("-", " ").title()
+
+            localized_description = ""
+            if isinstance(brand.descriptions, dict):
+                localized_description = brand.descriptions.get(code) or brand.descriptions.get("en") or ""
+            if not localized_description and isinstance(fallback_descriptions, dict):
+                localized_description = fallback_descriptions.get(code, "")
+
+            translation, created = models.BrandTranslation.objects.get_or_create(
+                brand=brand,
+                language=language,
+                defaults={
+                    "name": localized_name,
+                    "description": localized_description,
+                },
+            )
+            if created:
+                continue
+
+            update_fields: List[str] = []
+            if translation.name != localized_name:
+                translation.name = localized_name
+                update_fields.append("name")
+            if translation.description != localized_description:
+                translation.description = localized_description
+                update_fields.append("description")
+            if update_fields:
+                translation.save(update_fields=update_fields)
+
+
+def _sync_brand_taxonomy(
+    *,
+    brands: Dict[str, models.Brand],
+    styles: Dict[str, models.Style],
+    substyles: Dict[str, models.Substyle],
+) -> None:
+    for brand_slug, payload in BRAND_TAXONOMY_SEED.items():
+        brand = brands.get(brand_slug)
+        if not brand:
+            continue
+
+        primary_style_slug = payload.get("primary_style")
+        for style_slug in payload.get("styles", []):
+            style = styles.get(style_slug)
+            if not style:
+                continue
+            is_primary = style_slug == primary_style_slug
+            brand_style, created = models.BrandStyle.objects.get_or_create(
+                brand=brand,
+                style=style,
+                defaults={"is_primary": is_primary},
+            )
+            if not created and brand_style.is_primary != is_primary:
+                brand_style.is_primary = is_primary
+                brand_style.save(update_fields=["is_primary"])
+
+        substyle_notes = payload.get("substyle_notes", {})
+        for sub_slug in payload.get("substyles", []):
+            substyle = substyles.get(sub_slug)
+            if not substyle:
+                continue
+            note = ""
+            if isinstance(substyle_notes, dict):
+                note = str(substyle_notes.get(sub_slug, ""))
+            brand_substyle, created = models.BrandSubstyle.objects.get_or_create(
+                brand=brand,
+                substyle=substyle,
+                defaults={"notes": note},
+            )
+            if not created and note and brand_substyle.notes != note:
+                brand_substyle.notes = note
+                brand_substyle.save(update_fields=["notes"])
 
 
 def _create_items(

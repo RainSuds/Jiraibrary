@@ -6,6 +6,7 @@ import {
   BrandFilterOption,
   CollectionFilterOption,
   FilterOption,
+  ImagePreview,
   ItemListResponse,
   ItemSummary,
   PriceSummary,
@@ -13,12 +14,14 @@ import {
 } from "@/lib/api";
 
 type SearchPageProps = {
-  searchParams: Record<string, string | string[] | undefined>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
 type SelectedFilters = ItemListResponse["selected"];
 
 type OverrideRecord = Record<string, string | undefined | null>;
+
+const PLACEHOLDER_IMAGE_URL = "https://placehold.co/600x800?text=Jiraibrary";
 
 function normalizeParam(
   value: string | string[] | undefined
@@ -227,14 +230,33 @@ function ColorFilterSection({
   );
 }
 
+function resolveImage(preview: ImagePreview | null): string {
+  if (!preview || !preview.url) {
+    return PLACEHOLDER_IMAGE_URL;
+  }
+  return preview.url;
+}
+
 function ItemCard({ item }: { item: ItemSummary }) {
   const price = formatPrice(item.primary_price);
+  const imageUrl = resolveImage(item.cover_image);
 
   return (
     <Link
       href={`/items/${encodeURIComponent(item.slug)}`}
       className="group flex flex-col gap-3 rounded-2xl border border-rose-100 bg-white/90 p-5 shadow-sm transition hover:-translate-y-1 hover:border-rose-200 hover:shadow-lg"
     >
+      <div
+        className="overflow-hidden rounded-xl border border-rose-50 bg-rose-50"
+        style={{ aspectRatio: "3 / 4" }}
+      >
+        <img
+          src={imageUrl}
+          alt={`${item.name} cover`}
+          className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+          loading="lazy"
+        />
+      </div>
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-wide text-rose-400">
           {item.brand?.name ?? "Independent"}
@@ -287,13 +309,14 @@ function ItemCard({ item }: { item: ItemSummary }) {
 }
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
+  const resolvedSearchParams = await searchParams;
   const normalizedParams = {
-    q: normalizeParam(searchParams.q),
-    brand: normalizeParam(searchParams.brand),
-    category: normalizeParam(searchParams.category),
-    tag: normalizeParam(searchParams.tag),
-    color: normalizeParam(searchParams.color),
-    collection: normalizeParam(searchParams.collection),
+    q: normalizeParam(resolvedSearchParams.q),
+    brand: normalizeParam(resolvedSearchParams.brand),
+    category: normalizeParam(resolvedSearchParams.category),
+    tag: normalizeParam(resolvedSearchParams.tag),
+    color: normalizeParam(resolvedSearchParams.color),
+    collection: normalizeParam(resolvedSearchParams.collection),
   };
 
   const data = await getItemList(normalizedParams);

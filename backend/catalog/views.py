@@ -236,6 +236,7 @@ class ItemViewSet(viewsets.ReadOnlyModelViewSet):
 
     def _build_filters_payload(self, selected: dict[str, str | None]) -> dict[str, list[dict[str, Any]]]:
         published_filter = Q(items__status=models.Item.ItemStatus.PUBLISHED)
+        style_published_filter = Q(substyles__items__status=models.Item.ItemStatus.PUBLISHED)
 
         brand_options: list[dict[str, Any]] = []
         for brand in (
@@ -316,7 +317,7 @@ class ItemViewSet(viewsets.ReadOnlyModelViewSet):
         style_options: list[dict[str, Any]] = []
         for style in (
             models.Style.objects.annotate(
-                item_count=Count("substyles__items", filter=published_filter, distinct=True)
+                item_count=Count("substyles__items", filter=style_published_filter, distinct=True)
             )
             .filter(item_count__gt=0)
             .order_by("name")[:24]
@@ -334,7 +335,7 @@ class ItemViewSet(viewsets.ReadOnlyModelViewSet):
         if style_value and all(option["slug"] != style_value for option in style_options):
             extra_style = (
                 models.Style.objects.annotate(
-                    item_count=Count("substyles__items", filter=published_filter, distinct=True)
+                    item_count=Count("substyles__items", filter=style_published_filter, distinct=True)
                 )
                 .filter(slug=style_value)
                 .first()

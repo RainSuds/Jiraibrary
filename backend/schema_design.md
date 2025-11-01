@@ -1,432 +1,345 @@
-# J-Fashion Archive Database Schema
+# Catalog Schema Reference (Django 5.2)
 
-This reference captures the production-ready data model for the platform, expands the original proposal, and calls out relationships, constraints, indexing hints, and operational tables needed to support ingestion, moderation, analytics, and localization at scale.
+Last updated: **1 November 2025** after consolidating migrations into `catalog/0001_initial.py` and `catalog/0002_style_alter_substyle_options_alter_substyle_name_and_more.py`.
 
----
-
-## Conventions & Global Rules
-- PostgreSQL 15+ with UUID primary keys (`gen_random_uuid()`); surrogate keys use the suffix `_id`.
-- Every table has `created_at` and `updated_at` (`timestamptz`, default `now()` with trigger maintenance) unless otherwise noted.
-- Soft deletes (if needed) surface as `deleted_at`; hard deletes reserved for GDPR-driven removals handled by stored procedures.
-- Booleans default to `false`; enumerations use PostgreSQL `ENUM` types or reference tables where future extensibility is likely.
-- JSONB fields store semi-structured payloads; provide GIN indexes where lookup by key/value is expected.
-- Auditing and moderation rely on row-level security policies tied to the `User` role hierarchy.
+This document mirrors the current Django models under `backend/catalog/models.py`. Every model inherits from `TimeStampedUUIDModel`, giving each table a UUID primary key named `id` and `created_at` / `updated_at` timestamp columns.
 
 ---
 
-## High-Level Entity Map
-- **Core Catalog:** `Item`, `ItemTranslation`, `ItemPrice`, `ItemVariant`, `ItemMeasurement`, `ItemMetadata`
-- **Reference & Taxonomy:** `Brand`, `BrandLink`, `Collection`, `Style`, `Substyle`, `Category`, `Subcategory`, `Color`, `Fabric`, `Feature`, `Tag`, `TagTranslation`, `Language`, `Currency`
-- **Media:** `Image`, `ImageLabel`, `ImageEmbedding`, `AssetAttribution`
-- **Community & Curation:** `User`, `UserProfile`, `UserRole`, `Review`, `Comment`, `Favorite`, `OutfitSet`, `OutfitSetItem`, `UserFollow`
-- **Bridge Tables:** `ItemTag`, `ItemColor`, `ItemSubstyle`, `ItemFabric`, `ItemCollection`, `ItemSetComponent`
-- **Operations & Compliance:** `AuditLog`, `ModerationQueue`, `ModerationAction`, `SecurityConsent`, `Notification`, `UserActivity`, `AnalyticsSnapshot`, `SearchIndexQueue`, `PriceSyncRun`, `IngestionSource`, `IngestionJob`
+## Reference Tables
+
+### Language (`catalog_language`)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid | Primary key |
+| `code` | varchar(10) | Unique language identifier (ISO 639-1/2) |
+| `name` | varchar(128) | English display name |
+| `native_name` | varchar(128) | Optional native script |
+| `is_supported` | bool | Toggles availability in UI |
+
+### Currency (`catalog_currency`)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid | Primary key |
+| `code` | char(3) | ISO 4217; unique |
+| `name` | varchar(64) | |
+| `symbol` | varchar(8) | Optional display symbol |
+| `is_active` | bool | Marks currencies eligible for pricing |
 
 ---
 
-## Core Catalog Entities
+## Brand & Taxonomy
 
-### Item (`catalog.item`)
-| Column | Type | Constraints / Notes |
+### Brand (`catalog_brand`)
+
+| Field | Type | Notes |
 | --- | --- | --- |
-| `item_id` | UUID PK | Primary key |
-| `slug` | text | Unique per brand for SEO; unique index (`brand_id`, `slug`) |
-| `brand_id` | UUID FK | References `brand.brand_id` |
-| `category_id` | UUID FK | References `category.category_id`; cascade updates |
-| `origin_country` | char(2) | ISO 3166-1 alpha-2 |
-| `default_language` | text | ISO 639-1; FK → `language.code` |
-| `default_currency` | char(3) | ISO 4217; FK → `currency.code` |
-| `release_year` | smallint | Optional; check between 1970 and current_year + 1 |
-| `release_date` | date | Nullable |
-| `collaboration` | text | e.g., “BTSSB × Disney” |
-| `limited_edition` | boolean | |
-| `has_matching_set` | boolean | |
-| `verified_source` | boolean | Set true after moderation |
-| `status` | enum(`draft`,`pending_review`,`published`,`archived`) | Indexed for workflow |
-| `submitted_by` | UUID FK | References `user.user_id` |
-| `approved_at` | timestamptz | Timestamp of moderation approval |
-| `extra_metadata` | jsonb | Scraped/AI data (e.g., original listing URL, vendor SKU) |
+| `id` | uuid | Primary key |
+| `slug` | varchar(255) | Unique identifier used in URLs |
+| `names` | jsonb | Localised names keyed by language code |
+| `descriptions` | jsonb | Localised descriptions |
+| `country` | char(2) | Optional ISO 3166 code |
+| `founded_year` | smallint | 1800–2100 guard rails |
+| `icon_url` | varchar | Optional image URL |
+| `official_site_url` | varchar | |
+| `status` | enum(`active`,`discontinued`,`hiatus`) | Defaults to `active` |
 
-**Indexes:** `(brand_id, release_year DESC)`, `gin(extra_metadata jsonb_path_ops)`.
+#### BrandTranslation (`catalog_brandtranslation`)
 
-**Notes:** Rich text content is stored in translation tables; tagging, colors, substyles handled via M2M bridges.
-
-### ItemTranslation (`catalog.item_translation`)
-| Column | Type | Constraints / Notes |
+| Field | Type | Notes |
 | --- | --- | --- |
-| `translation_id` | UUID PK | |
-| `item_id` | UUID FK | References `catalog.item` on delete cascade |
-| `language_code` | text | FK → `language.code`; unique with `item_id` & `dialect` |
-| `dialect` | text | Optional (e.g., `en-US`) |
-| `name` | text | Localized display name |
-| `description` | text | Markdown/plain |
-| `pattern` | text | |
-| `fit` | text | |
-| `length` | text | |
-| `occasion` | text | |
-| `season` | text | |
-| `lining` | text | |
-| `closure_type` | text | |
-| `care_instructions` | text | |
-| `source` | enum(`official`,`ai`,`user`) | |
-| `quality` | enum(`draft`,`verified`) | |
-| `auto_translated` | boolean | Flag for AI-created content |
+| `id` | uuid | Primary key |
+| `brand_id` | uuid FK → brand | |
+| `language_id` | uuid FK → language | One translation per language |
+| `name` | varchar(255) | Mandatory localized name |
+| `description` | text | Optional localized profile |
 
-**Indexes:** Unique (`item_id`, `language_code`, `dialect`); trigram index on `name` for search.
+#### BrandStyle (`catalog_brandstyle`)
 
-### ItemPrice (`catalog.item_price`)
-| Column | Type | Constraints / Notes |
+| Field | Type | Notes |
 | --- | --- | --- |
-| `price_id` | UUID PK | |
-| `item_id` | UUID FK | |
-| `currency_code` | char(3) | FK → `currency.code`; unique with `item_id` & `source` |
-| `amount` | numeric(10,2) | Monetary amount |
-| `source` | enum(`origin`,`converted`,`manual`) | |
-| `rate_used` | numeric(12,6) | Exchange rate applied |
-| `valid_from` | date | Range start; combine with `valid_to` for bitemporal tracking |
-| `valid_to` | date | Nullable |
-| `last_synced_at` | timestamptz | For currency refresh scheduling |
+| `id` | uuid | Primary key |
+| `brand_id` | uuid FK → brand | |
+| `style_id` | uuid FK → style | |
+| `is_primary` | bool | Marks canonical aesthetic |
 
-**Indexes:** `(item_id, currency_code)`, partial index on `source = 'origin'`.
+#### BrandSubstyle (`catalog_brandsubstyle`)
 
-### ItemVariant (`catalog.item_variant`)
-| Column | Type | Constraints / Notes |
+| Field | Type | Notes |
 | --- | --- | --- |
-| `variant_id` | UUID PK | |
-| `item_id` | UUID FK | |
-| `variant_label` | text | E.g., “Pink JSK”, “Size M” |
-| `sku` | text | Optional vendor or internal SKU |
-| `color_id` | UUID FK | Nullable link to canonical color |
-| `size_descriptor` | text | Freeform size label |
-| `stock_status` | enum(`available`,`limited`,`sold_out`,`unknown`) | Latest known availability |
-| `notes` | jsonb | Additional structured variant data |
+| `id` | uuid | Primary key |
+| `brand_id` | uuid FK → brand | |
+| `substyle_id` | uuid FK → substyle | |
+| `notes` | text | Optional curation notes |
 
-### ItemMeasurement (`catalog.item_measurement`)
-| Column | Type | Constraints / Notes |
+### Style (`catalog_style`)
+
+| Field | Type | Notes |
 | --- | --- | --- |
-| `measurement_id` | UUID PK | |
-| `item_id` | UUID FK | |
-| `variant_id` | UUID FK | Optional to tie measurements to variants |
-| `is_one_size` | boolean | |
-| `bust_cm` | numeric(6,2) | |
-| `waist_cm` | numeric(6,2) | |
-| `hip_cm` | numeric(6,2) | |
-| `length_cm` | numeric(6,2) | |
-| `sleeve_length_cm` | numeric(6,2) | |
-| `hem_cm` | numeric(6,2) | |
-| `heel_height_cm` | numeric(6,2) | |
-| `bag_depth_cm` | numeric(6,2) | |
-| `fit_notes` | text | Freeform text for sizing quirks |
-
-### ItemMetadata (`catalog.item_metadata`)
-| Column | Type | Constraints / Notes |
-| --- | --- | --- |
-| `metadata_id` | UUID PK | |
-| `item_id` | UUID FK | Unique; one-to-one extension |
-| `pattern` | enum or text | E.g., `solid`, `floral`, `print` |
-| `sleeve_type` | text | |
-| `occasion` | text | |
-| `season` | text | |
-| `fit` | text | |
-| `length` | text | |
-| `lining` | text | |
-| `closure_type` | text | |
-| `care_instructions` | text | |
-| `inspiration` | text | Notes on design inspiration |
-| `ai_confidence` | numeric(5,2) | Confidence score for AI-derived metadata |
-
----
-
-## Reference & Taxonomy Entities
-
-### Brand (`brand.brand`)
-| Column | Type | Constraints / Notes |
-| --- | --- | --- |
-| `brand_id` | UUID PK | |
-| `slug` | text | Unique |
-| `names` | jsonb | Localized brand names |
-| `descriptions` | jsonb | Localized bios |
-| `country` | char(2) | Headquarters country |
-| `founded_year` | smallint | |
-| `icon_url` | text | |
-| `official_site_url` | text | |
-| `status` | enum(`active`,`discontinued`,`hiatus`) | |
-
-**Supplements:** `BrandLink` table for social/shop URLs with type-labeled rows.
-
-### Collection (`brand.collection`)
-| Column | Type | Notes |
-| --- | --- | --- |
-| `collection_id` | UUID PK | |
-| `brand_id` | UUID FK | |
-| `name` | text | e.g., “Spring 2009 Gothic” |
-| `season` | enum(`spring`,`summer`,`fall`,`winter`,`resort`) | |
-| `year` | smallint | |
-| `description` | text | |
-
-### Category (`catalog.category`) & Subcategory (`catalog.subcategory`)
-
-| Column | Type | Notes |
-| --- | --- | --- |
-| `category_id` | UUID PK | |
-| `name` | text | Unique |
-| `description` | text | |
-
-
-`Subcategory` references `category_id` and provides more granular taxonomy (e.g., `JSK`, `Skirt`). Items link to subcategories via `ItemCategoryAssignment` if multi-classification is required.
-
-### Style (`catalog.style`) & Substyle (`catalog.substyle`)
-
-| Column | Type | Notes |
-| --- | --- | --- |
-| `style_id` | UUID PK | |
-| `name` | text | Unique |
-| `slug` | text | Unique routing key |
+| `id` | uuid | Primary key |
+| `name` | varchar(128) | Unique aesthetic name |
+| `slug` | varchar(128) | Unique slug |
 | `description` | text | Optional summary |
 
-`Substyle` now references `style_id`, ensuring each aesthetic grouping (e.g., `Jirai Kei`) owns a curated list of variations (e.g., `Subcul`, `Classic`).
+### Substyle (`catalog_substyle`)
 
-| Column | Type | Notes |
+| Field | Type | Notes |
 | --- | --- | --- |
-| `substyle_id` | UUID PK | |
-| `style_id` | UUID FK | References `catalog.style`; cascade deletes |
-| `name` | text | Unique per style |
-| `slug` | text | Unique |
-| `description` | text | |
+| `id` | uuid | Primary key |
+| `style_id` | uuid FK → style | Nullable temporarily during migration cleanup |
+| `name` | varchar(128) | Unique within a style |
+| `slug` | varchar(128) | Globally unique slug |
+| `description` | text | Optional detail |
 
-Items link to substyles through `ItemSubstyle`, enabling per-substyle weighting like before while making the hierarchy explicit at the style level.
+### Category (`catalog_category`)
 
-### Color (`catalog.color`)
- 
-| Column | Type | Notes |
+| Field | Type | Notes |
 | --- | --- | --- |
-| `color_id` | UUID PK | |
-| `name` | text | |
-| `hex_code` | char(7) | `#RRGGBB` |
-| `lch_values` | jsonb | Optional color space for clustering |
+| `id` | uuid | Primary key |
+| `name` | varchar(128) | Unique category label |
+| `slug` | varchar(128) | Unique slug |
+| `description` | text | Optional |
 
-### Fabric (`catalog.fabric`)
- 
-Records canonical fabric types (cotton, chiffon, etc.) and blends to support filtering and sustainability metrics.
+### Subcategory (`catalog_subcategory`)
 
-### Feature (`catalog.feature`)
- 
-Defines repeatable construction and styling elements frequently referenced in listings.
-
-| Column | Type | Notes |
+| Field | Type | Notes |
 | --- | --- | --- |
-| `feature_id` | UUID PK | |
-| `name` | text | Canonical term (e.g., “Ruffles”, “Elastic Waist”) |
-| `description` | text | Optional definition or usage context |
-| `synonyms` | jsonb | Alternate search keywords |
-| `category` | enum(`construction`,`accessory`,`trim`,`attachment`) | Helps cluster similar features |
-| `is_visible` | boolean | Toggle for deprecated or hidden features |
+| `id` | uuid | Primary key |
+| `category_id` | uuid FK → category | |
+| `name` | varchar(128) | Unique within a category |
+| `slug` | varchar(128) | Unique slug |
+| `description` | text | Optional |
 
-Localization follows the translation pattern if required: introduce `FeatureTranslation` mirroring `TagTranslation` (optional until needed).
+### Color (`catalog_color`)
 
-### Tag (`catalog.tag`) & TagTranslation (`catalog.tag_translation`)
- 
-| Column | Type | Notes |
+| Field | Type | Notes |
 | --- | --- | --- |
-| `tag_id` | UUID PK | |
-| `name` | text | Base locale |
-| `description` | text | |
-| `type` | enum(`style`,`detail`,`material`,`motif`,`construction`) | |
-| `is_featured` | boolean | Highlight for discovery |
+| `id` | uuid | Primary key |
+| `name` | varchar(64) | |
+| `hex_code` | char(7) | Optional `#RRGGBB` |
+| `lch_values` | jsonb | Optional perceptual colour payload |
 
-Translations mirror the pattern used for items: unique (`tag_id`, `language_code`) with `source` and `quality` flags.
+### Fabric (`catalog_fabric`)
 
-### Language (`core.language`) & Currency (`core.currency`)
- 
-Canonical lookup tables seeding ISO codes, English names, display order, and `is_supported` flags.
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid | Primary key |
+| `name` | varchar(64) | Unique |
+| `description` | text | Optional |
+
+### Feature (`catalog_feature`)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid | Primary key |
+| `name` | varchar(128) | Unique |
+| `description` | text | Optional |
+| `synonyms` | jsonb | Alternate search terms |
+| `category` | enum(`construction`,`accessory`,`trim`,`attachment`) | Defaults to `construction` |
+| `is_visible` | bool | Feature toggle |
+
+### Tag (`catalog_tag`)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid | Primary key |
+| `name` | varchar(128) | Unique |
+| `slug` | varchar(128) | Unique |
+| `description` | text | Optional |
+| `type` | enum(`style`,`detail`,`material`,`motif`,`construction`) | Defaults to `detail` |
+| `is_featured` | bool | Marks tags for homepage surfacing |
+
+#### TagTranslation (`catalog_tagtranslation`)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid | Primary key |
+| `tag_id` | uuid FK → tag | |
+| `language_id` | uuid FK → language | One entry per language |
+| `name` | varchar(128) | Localised name |
+| `description` | text | Optional localization |
+| `source` | enum(`official`,`ai`,`user`) | Defaults to `user` |
+| `quality` | enum(`draft`,`verified`) | Defaults to `draft` |
+| `auto_translated` | bool | Flags AI content |
+
+### Collection (`catalog_collection`)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid | Primary key |
+| `brand_id` | uuid FK → brand | |
+| `name` | varchar(255) | |
+| `season` | enum(`spring`,`summer`,`fall`,`winter`,`resort`) | Optional |
+| `year` | smallint | 1900–2100 guard rails |
+| `description` | text | Optional |
 
 ---
 
-## Media Entities
+## Item Lifecycle
 
-### Image (`media.image`)
- 
-| Column | Type | Notes |
+### Item (`catalog_item`)
+
+| Field | Type | Notes |
 | --- | --- | --- |
-| `image_id` | UUID PK | |
-| `item_id` | UUID FK | Nullable for standalone brand assets |
-| `brand_id` | UUID FK | Nullable |
-| `variant_id` | UUID FK | Optional variant-level imagery |
-| `storage_path` | text | S3 or CDN key |
-| `type` | enum(`cover`,`gallery`,`detail`,`brand_logo`,`lookbook`) | |
-| `caption` | text | Localizable via `ImageLabel` |
-| `is_cover` | boolean | |
-| `width`, `height` | integer | |
-| `file_size_bytes` | integer | |
-| `hash_signature` | text | Perceptual hash for dedupe |
-| `dominant_color` | char(7) | |
-| `source` | enum(`official`,`user_upload`,`ai_generated`) | |
-| `license` | text | Usage rights |
+| `id` | uuid | Primary key |
+| `slug` | varchar(255) | Unique per item |
+| `brand_id` | uuid FK → brand | |
+| `category_id` | uuid FK → category | Nullable |
+| `subcategory_id` | uuid FK → subcategory | Nullable |
+| `origin_country` | char(2) | Optional |
+| `default_language_id` | uuid FK → language | Nullable |
+| `default_currency_id` | uuid FK → currency | Nullable |
+| `release_year` | smallint | 1970–2100 guard rails |
+| `release_date` | date | Optional |
+| `collaboration` | varchar(255) | Optional |
+| `limited_edition` | bool | |
+| `has_matching_set` | bool | |
+| `verified_source` | bool | |
+| `status` | enum(`draft`,`pending_review`,`published`,`archived`) | Defaults to `draft` |
+| `submitted_by_id` | uuid FK → auth user | Nullable |
+| `approved_at` | timestamptz | Optional moderation timestamp |
+| `extra_metadata` | jsonb | Flexible metadata (e.g. listing URLs) |
 
-**Supplementary tables:**
+Many-to-many relationships use explicit through models:
 
-- `ImageLabel` records translated captions and accessibility text.
-- `ImageEmbedding` stores CLIP vectors or similar for nearest-neighbor search (use `pgvector`).
-- `AssetAttribution` maps credit lines and photographer metadata.
+- `tags` ↔ `ItemTag`
+- `colors` ↔ `ItemColor`
+- `substyles` ↔ `ItemSubstyle`
+- `fabrics` ↔ `ItemFabric`
+- `features` ↔ `ItemFeature`
+- `collections` ↔ `ItemCollection`
+
+### ItemTranslation (`catalog_itemtranslation`)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid | Primary key |
+| `item_id` | uuid FK → item | cascade delete |
+| `language_id` | uuid FK → language | |
+| `dialect` | varchar(32) | Optional |
+| `name` | varchar(255) | Localised item title |
+| `description` | text | Optional |
+| `pattern` | varchar(255) | Optional |
+| `fit` | varchar(255) | Optional |
+| `length` | varchar(255) | Optional |
+| `occasion` | varchar(255) | Optional |
+| `season` | varchar(255) | Optional |
+| `lining` | varchar(255) | Optional |
+| `closure_type` | varchar(255) | Optional |
+| `care_instructions` | text | Optional |
+| `source` | enum(`official`,`ai`,`user`) | Defaults to `user` |
+| `quality` | enum(`draft`,`verified`) | Defaults to `draft` |
+| `auto_translated` | bool | Flags machine translations |
+
+### ItemPrice (`catalog_itemprice`)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid | Primary key |
+| `item_id` | uuid FK → item | |
+| `currency_id` | uuid FK → currency | |
+| `amount` | numeric(10,2) | Monetary value |
+| `source` | enum(`origin`,`converted`,`manual`) | Defaults to `origin` |
+| `rate_used` | numeric(12,6) | Optional exchange rate |
+| `valid_from` | date | Optional start |
+| `valid_to` | date | Optional end |
+| `last_synced_at` | timestamptz | Optional |
+
+### ItemVariant (`catalog_itemvariant`)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid | Primary key |
+| `item_id` | uuid FK → item | |
+| `variant_label` | varchar(255) | Display name |
+| `sku` | varchar(255) | Optional SKU |
+| `color_id` | uuid FK → color | Nullable |
+| `size_descriptor` | varchar(128) | Optional |
+| `stock_status` | enum(`available`,`limited`,`sold_out`,`unknown`) | Defaults to `unknown` |
+| `notes` | jsonb | Additional details |
+
+### ItemMeasurement (`catalog_itemmeasurement`)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid | Primary key |
+| `item_id` | uuid FK → item | |
+| `variant_id` | uuid FK → itemvariant | Nullable |
+| `is_one_size` | bool | |
+| `bust_cm` | numeric(6,2) | Optional |
+| `waist_cm` | numeric(6,2) | Optional |
+| `hip_cm` | numeric(6,2) | Optional |
+| `length_cm` | numeric(6,2) | Optional |
+| `sleeve_length_cm` | numeric(6,2) | Optional |
+| `hem_cm` | numeric(6,2) | Optional |
+| `heel_height_cm` | numeric(6,2) | Optional |
+| `bag_depth_cm` | numeric(6,2) | Optional |
+| `fit_notes` | text | Optional |
+
+### ItemMetadata (`catalog_itemmetadata`)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid | Primary key |
+| `item_id` | uuid FK → item | One-to-one |
+| `pattern` | varchar(64) | Optional |
+| `sleeve_type` | varchar(128) | Optional |
+| `occasion` | varchar(128) | Optional |
+| `season` | varchar(128) | Optional |
+| `fit` | varchar(128) | Optional |
+| `length` | varchar(128) | Optional |
+| `lining` | varchar(128) | Optional |
+| `closure_type` | varchar(128) | Optional |
+| `care_instructions` | text | Optional |
+| `inspiration` | text | Optional |
+| `ai_confidence` | numeric(5,2) | Optional |
+
+### Image (`catalog_image`)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid | Primary key |
+| `item_id` | uuid FK → item | Nullable |
+| `brand_id` | uuid FK → brand | Nullable |
+| `variant_id` | uuid FK → itemvariant | Nullable |
+| `storage_path` | varchar(512) | Asset key |
+| `type` | enum(`cover`,`gallery`,`detail`,`brand_logo`,`lookbook`) | Defaults to `gallery` |
+| `caption` | text | Optional |
+| `is_cover` | bool | |
+| `width` | int | Optional |
+| `height` | int | Optional |
+| `file_size_bytes` | bigint | Optional |
+| `hash_signature` | varchar(255) | Optional |
+| `dominant_color` | char(7) | Optional |
+| `source` | varchar(32) | Optional |
+| `license` | varchar(255) | Optional |
 
 ---
 
-## Community & Curation
+## Through Tables
 
-### User (`account.user`)
- 
-| Column | Type | Notes |
+| Table | Purpose | Key Fields |
 | --- | --- | --- |
-| `user_id` | UUID PK | |
-| `username` | citext | Unique, case-insensitive |
-| `email` | citext | Unique |
-| `password_hash` | text | BCrypt/Argon2 |
-| `role_id` | UUID FK | Links to `UserRole` |
-| `date_joined` | timestamptz | |
-| `last_login_at` | timestamptz | |
+| `catalog_itemtag` | Item ↔ Tag | `item_id`, `tag_id`, `context`, `confidence` |
+| `catalog_itemcolor` | Item ↔ Color | `item_id`, `color_id`, `is_primary` |
+| `catalog_itemsubstyle` | Item ↔ Substyle | `item_id`, `substyle_id`, `weight` |
+| `catalog_itemfabric` | Item ↔ Fabric | `item_id`, `fabric_id`, `percentage` |
+| `catalog_itemfeature` | Item ↔ Feature | `item_id`, `feature_id`, `is_prominent`, `notes` |
+| `catalog_itemcollection` | Item ↔ Collection | `item_id`, `collection_id`, `role` |
 
-`UserProfile` extends with bio, pronouns, location, preferred languages, linked social handles, and `profile_picture`.
-
-### UserRole (`account.user_role`)
- 
-Defines RBAC permissions (`admin`, `moderator`, `contributor`, `member`, `readonly`).
-
-### Review (`social.review`)
- 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `review_id` | UUID PK | |
-| `item_id` | UUID FK | |
-| `user_id` | UUID FK | |
-| `rating` | smallint | 1–5 with check constraint |
-| `title` | text | Optional headline |
-| `body` | text | Markdown supported |
-| `is_verified_purchase` | boolean | |
-| `date_submitted` | timestamptz | |
-
-### Comment (`social.comment`)
- 
-Threaded discussions on items, collections, or outfits with `parent_comment_id` self-reference, soft-delete support, and moderation status.
-
-### Favorite (`social.favorite`)
- 
-Composite PK (`user_id`, `item_id`); `created_at` timestamp.
-
-### OutfitSet (`social.outfit_set`)
- 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `set_id` | UUID PK | |
-| `name` | text | |
-| `description` | text | |
-| `created_by` | UUID FK | |
-| `visibility` | enum(`private`,`unlisted`,`public`) | |
-
-`OutfitSetItem` bridges sets to items with ordering (`position`) and optional `styling_notes` jsonb per component.
-
-### UserFollow (`social.user_follow`)
- 
-Stores follower relationships (`follower_id`, `followed_id`, `created_at`) with unique composite index.
+Each through table inherits timestamps, enforces `unique_together` on the foreign keys, and provides ordering metadata in Django for predictable admin display.
 
 ---
 
-## Bridge Tables (Many-to-Many)
+## Implementation Notes
 
-| Table | Columns | Notes |
-| --- | --- | --- |
-| `catalog.item_tag` | `item_id` FK, `tag_id` FK, `context` enum(`primary`,`secondary`), `confidence` numeric(4,2) | GIN index on tag for filtering |
-| `catalog.item_color` | `item_id`, `color_id`, `is_primary` boolean | |
-| `catalog.item_substyle` | `item_id`, `substyle_id`, `weight` numeric(4,2) | Weight scores aesthetic alignment |
-| `catalog.item_fabric` | `item_id`, `fabric_id`, `percentage` numeric(5,2) | Sum constraint via trigger |
-| `catalog.item_feature` | `item_id`, `feature_id`, `is_prominent` boolean, `notes` text | Captures construction details like ruffles or detachable sleeves |
-| `catalog.item_collection` | `item_id`, `collection_id`, `role` enum(`mainline`,`special`,`collaboration`) | |
-| `social.item_set_component` | `set_id`, `item_id`, `position` integer | Maintains curated order |
+- All UUIDs are generated in Django (`uuid.uuid4`) and map to PostgreSQL `uuid` columns.
+- `created_at` / `updated_at` capture audit timestamps automatically; there is no soft-delete column at present.
+- JSON-heavy fields (`Brand.names`, `Item.extra_metadata`, etc.) reside in PostgreSQL `jsonb` columns to support flexible payloads.
+- `Substyle.style` is currently nullable to support legacy data migration; future clean-up will enforce a non-null foreign key.
+- Django admin exposes `BrandStyle`, `BrandSubstyle`, and brand translations through inlines; `filter_horizontal` is avoided due to explicit through models.
+- The seed command (`management/commands/seed_catalog.py`) currently provisions a minimal baseline of languages, currencies, categories, styles/substyles, and a handful of brands.
 
-All bridge tables include `created_at` for auditability; composite primary keys enforce uniqueness.
-
----
-
-## Operations, Moderation & Analytics
-
-### AuditLog (`ops.audit_log`)
- 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `log_id` | UUID PK | |
-| `action` | text | Machine-readable event name |
-| `actor_id` | UUID FK | User performing action |
-| `target_type` | text | E.g., `item`, `image`, `review` |
-| `target_id` | UUID | Polymorphic reference |
-| `metadata` | jsonb | Before/after snapshots |
-| `ip_address` | inet | |
-
-### ModerationQueue (`ops.moderation_queue`) & ModerationAction (`ops.moderation_action`)
- 
-Track submissions requiring review (new items, edits, reports). Actions capture decisions, notes, and escalation path.
-
-### SecurityConsent (`ops.security_consent`)
- 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `consent_id` | UUID PK | |
-| `user_id` | UUID FK | |
-| `consent_type` | enum(`data_collection`,`email_marketing`,`ai_processing`) | |
-| `date_given` | timestamptz | |
-| `change_description` | text | Historical log |
-| `change_timestamp` | timestamptz | |
-
-### Notification (`ops.notification`)
- 
-Stores system- or user-generated notifications with templated payloads and read receipts per recipient.
-
-### UserActivity (`ops.user_activity`)
- 
-Event store for timeline analytics (`event_type`, `actor_id`, `target_id`, `payload` jsonb). Supports generating feed stories and measuring engagement.
-
-### AnalyticsSnapshot (`analytics.analytics_snapshot`)
- 
-Time-series metrics aggregated daily (`recorded_at`, `item_id`, `views`, `likes`, `shares`, `popularity_score`, `source`). Materialized views drive dashboards.
-
-### SearchIndexQueue (`ops.search_index_queue`)
- 
-Captures entities requiring re-indexing in external search services (`entity_type`, `entity_id`, `priority`, `attempts`, `last_attempt_at`).
-
-### PriceSyncRun (`ops.price_sync_run`)
- 
-Logs currency conversion batches: `run_id`, `started_at`, `completed_at`, `status`, `records_processed`, `error_summary`.
-
-### IngestionSource (`ops.ingestion_source`) & IngestionJob (`ops.ingestion_job`)
- 
-Maintain provenance for scraped/imported data with job-level status, last success timestamp, and error payloads for retry pipelines.
-
----
-
-## Search & Indexing Considerations
- 
-- Use materialized views for denormalized search documents combining item, brand, tags, and latest pricing.
-- Maintain trigram indexes on localized `name` fields for fuzzy matching; pair with `pg_search` or Elasticsearch.
-- Consider `pgvector` for semantic similarity on `ImageEmbedding` and textual embeddings.
-
----
-
-## Data Quality & Governance Notes
- 
-- Add unique constraints and triggers to stop duplicate items: e.g., unique `(brand_id, default_language, names->>'default')` where applicable.
-- Cron-driven jobs refresh exchange rates and invalidate stale `ItemPrice` rows.
-- Periodic AI translation review: queue flagged rows (`auto_translated = true`, `quality = 'draft'`) for moderator approval.
-- Soft deletes cascade to dependent tables via `deleted_at` triggers where necessary (items → translations, prices, associations).
-- Versioning: consider `temporal_tables` or `audit triggers` on `catalog.item` for edit history.
-
----
-
-## Future Enhancements
- 
-- Internationalization: add `LocalePreference` per user and per brand for prioritized display order.
-- Sustainability metrics: introduce `SourcingCertification`, `ManufacturingLocation`, and traceability joins to underpin ethical sourcing filters.
-- AI assist: persist `Recommendation` and `Similarity` tables to store offline-computed nearest neighbors for outfits.
-- Marketplace integration: add `Retailer`, `RetailerListing`, and `AffiliateLink` tables to model live availability.
-- Event tracking: extend analytics with cohort tables (retention, conversion) and integrate with CDP via CDC streams.
-
----
-
-This schema design can be used as the foundation for ERD tooling, migration scaffolding, and alignment with backend service boundaries. Convert sections into DDL with a consistent naming strategy (`schema.table`) to ensure maintainability across environments.
+This document should be regenerated whenever fields are added, renamed, or relationships change to keep AWS deployment artefacts and ERD diagrams accurate.

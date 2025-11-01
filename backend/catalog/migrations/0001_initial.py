@@ -126,6 +126,22 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
+            name='BrandTranslation',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('name', models.CharField(max_length=255)),
+                ('description', models.TextField(blank=True)),
+                ('brand', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='translations', to='catalog.brand')),
+                ('language', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='brand_translations', to='catalog.language')),
+            ],
+            options={
+                'ordering': ['brand__slug', 'language__code'],
+                'unique_together': {('brand', 'language')},
+            },
+        ),
+        migrations.CreateModel(
             name='Collection',
             fields=[
                 ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
@@ -140,6 +156,20 @@ class Migration(migrations.Migration):
             options={
                 'ordering': ['brand__slug', '-year', 'season', 'name'],
                 'unique_together': {('brand', 'name', 'season', 'year')},
+            },
+        ),
+        migrations.CreateModel(
+            name='Style',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('name', models.CharField(max_length=128, unique=True)),
+                ('slug', models.SlugField(max_length=128, unique=True)),
+                ('description', models.TextField(blank=True)),
+            ],
+            options={
+                'ordering': ['name'],
             },
         ),
         migrations.CreateModel(
@@ -385,14 +415,55 @@ class Migration(migrations.Migration):
                 ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('name', models.CharField(max_length=128, unique=True)),
+                ('name', models.CharField(max_length=128)),
                 ('slug', models.SlugField(max_length=128, unique=True)),
                 ('description', models.TextField(blank=True)),
-                ('parent_substyle', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='child_substyles', to='catalog.substyle')),
+                ('style', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='substyles', to='catalog.style')),
             ],
             options={
-                'ordering': ['name'],
+                'ordering': ['style__name', 'name'],
+                'unique_together': {('style', 'name')},
             },
+        ),
+        migrations.CreateModel(
+            name='BrandStyle',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('is_primary', models.BooleanField(default=False)),
+                ('brand', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='catalog.brand')),
+                ('style', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='catalog.style')),
+            ],
+            options={
+                'ordering': ['brand__slug', 'style__name'],
+                'unique_together': {('brand', 'style')},
+            },
+        ),
+        migrations.CreateModel(
+            name='BrandSubstyle',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('notes', models.TextField(blank=True)),
+                ('brand', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='catalog.brand')),
+                ('substyle', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='catalog.substyle')),
+            ],
+            options={
+                'ordering': ['brand__slug', 'substyle__name'],
+                'unique_together': {('brand', 'substyle')},
+            },
+        ),
+        migrations.AddField(
+            model_name='brand',
+            name='styles',
+            field=models.ManyToManyField(blank=True, related_name='brands', through='catalog.BrandStyle', to='catalog.style'),
+        ),
+        migrations.AddField(
+            model_name='brand',
+            name='substyles',
+            field=models.ManyToManyField(blank=True, related_name='brands', through='catalog.BrandSubstyle', to='catalog.substyle'),
         ),
         migrations.CreateModel(
             name='ItemSubstyle',

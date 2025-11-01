@@ -25,9 +25,8 @@ class BrandSubstyleInline(admin.TabularInline):
 @admin.register(models.Brand)
 class BrandAdmin(admin.ModelAdmin):
     list_display = ("slug", "status", "country", "founded_year")
-    list_filter = ("status", "country", "styles")
+    list_filter = ("status", "country")
     search_fields = ("slug", "names")
-    filter_horizontal = ("styles", "substyles")
     inlines = [BrandTranslationInline, BrandStyleInline, BrandSubstyleInline]
 
 

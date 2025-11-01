@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import ItemGallery from "@/components/item-gallery";
 import {
   ColorSummary,
+  ImageDetail,
   ItemDetail as ItemDetailPayload,
   ItemMetadataPayload,
   ItemVariantPayload,
@@ -11,8 +13,10 @@ import {
 } from "@/lib/api";
 
 type ItemDetailPageProps = {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 };
+
+const PLACEHOLDER_IMAGE_URL = "https://placehold.co/600x800?text=Jiraibrary";
 
 function buildSearchUrl(params: Record<string, string | undefined>): string {
   const search = new URLSearchParams();
@@ -59,6 +63,13 @@ function formatPrice(price: PriceSummary | undefined | null): string | null {
 function titleCase(value: string): string {
   return value
     .split("_")
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+}
+
+function formatSlugLabel(value: string): string {
+  return value
+    .split("-")
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(" ");
 }
@@ -161,9 +172,10 @@ function VariantList({
 }
 
 export default async function ItemDetail({ params }: ItemDetailPageProps) {
+  const resolvedParams = await params;
   let item: ItemDetailPayload;
   try {
-    item = await getItemDetail(params.slug);
+    item = await getItemDetail(resolvedParams.slug);
   } catch (error) {
     notFound();
   }
@@ -175,6 +187,7 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
   const displayName = resolveDisplayName(item);
   const primaryPrice = formatPrice(item.prices[0]);
   const metadata = item.metadata;
+  const galleryImages: ImageDetail[] = item.gallery ?? [];
   const referenceGroups: Array<{ title: string; links: Array<{ label: string; href: string }> }> = [];
 
   if (item.brand) {
@@ -217,6 +230,16 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
       links: item.colors.map((color) => ({
         label: color.name,
         href: buildSearchUrl({ color: color.id }),
+      })),
+    });
+  }
+
+  if (item.collections.length > 0) {
+    referenceGroups.push({
+      title: "Collections",
+      links: item.collections.map((collection) => ({
+        label: `${collection.year ? `${collection.year} ` : ""}${collection.name}`.trim(),
+        href: buildSearchUrl({ collection: collection.id }),
       })),
     });
   }
@@ -276,6 +299,11 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
 
       <section className="grid gap-10 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <article className="flex flex-col gap-8">
+          <ItemGallery
+            images={galleryImages}
+            alt={displayName}
+            placeholderUrl={PLACEHOLDER_IMAGE_URL}
+          />
           <div className="flex flex-col gap-4">
             <h2 className="text-lg font-semibold text-rose-900">Overview</h2>
             <dl className="grid gap-4 sm:grid-cols-2">
@@ -317,6 +345,23 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
           {metadata ? <MetadataGrid metadata={metadata} /> : null}
 
           {metadataEntries.length === 0 && metadata ? null : null}
+
+          {item.substyles.length > 0 ? (
+            <div className="flex flex-col gap-4">
+              <h2 className="text-lg font-semibold text-rose-900">Substyles</h2>
+              <div className="flex flex-wrap gap-2">
+                {item.substyles.map((substyle) => (
+                  <span
+                    key={substyle.id}
+                    className="rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-600"
+                  >
+                    {substyle.name}
+                    {substyle.weight ? ` · ${substyle.weight}` : ""}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {extraMetadataEntries.length > 0 ? (
             <div className="flex flex-col gap-4">
@@ -363,6 +408,95 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
           ) : null}
 
           <VariantList variants={item.variants} colors={item.colors} />
+
+          {item.collections.length > 0 ? (
+            <div className="flex flex-col gap-4">
+              <h2 className="text-lg font-semibold text-rose-900">Collection placement</h2>
+              <ul className="flex flex-col gap-3">
+                {item.collections.map((collection) => {
+                  const brandLabel = collection.brand_slug
+                    ? formatSlugLabel(collection.brand_slug)
+                    : null;
+
+                  return (
+                    <li
+                      key={collection.id}
+                      className="rounded-2xl border border-rose-100 bg-white/90 p-4 shadow-sm"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-rose-900">{collection.name}</p>
+                          <p className="text-xs uppercase tracking-wide text-rose-400">
+                            {collection.year ? `${collection.year}` : "Unknown year"}
+                            {collection.season ? ` • ${titleCase(collection.season)}` : ""}
+                          </p>
+                        </div>
+                        <span className="text-xs rounded-full bg-rose-100 px-3 py-1 font-medium text-rose-600">
+                          {titleCase(collection.role)}
+                        </span>
+                      </div>
+                      {collection.brand_slug && brandLabel ? (
+                        <Link
+                          href={buildSearchUrl({ brand: collection.brand_slug })}
+                          className="mt-3 inline-flex text-xs text-rose-500 transition hover:text-rose-800"
+                        >
+                          View more from {brandLabel}
+                        </Link>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
+
+          {item.fabrics.length > 0 ? (
+            <div className="flex flex-col gap-4">
+              <h2 className="text-lg font-semibold text-rose-900">Fabric composition</h2>
+              <ul className="grid gap-3 sm:grid-cols-2">
+                {item.fabrics.map((fabric) => (
+                  <li
+                    key={fabric.id}
+                    className="rounded-xl border border-rose-100 bg-white/90 p-4"
+                  >
+                    <p className="text-sm font-semibold text-rose-900">{fabric.name}</p>
+                    <p className="text-xs uppercase tracking-wide text-rose-400">
+                      {fabric.percentage ? `${fabric.percentage}%` : "Blend"}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {item.features.length > 0 ? (
+            <div className="flex flex-col gap-4">
+              <h2 className="text-lg font-semibold text-rose-900">Features</h2>
+              <ul className="flex flex-col gap-3">
+                {item.features.map((feature) => (
+                  <li
+                    key={feature.id}
+                    className="rounded-2xl border border-rose-100 bg-white/90 p-4 shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-rose-900">{feature.name}</p>
+                      <span className="text-xs uppercase tracking-wide text-rose-400">
+                        {titleCase(feature.category)}
+                      </span>
+                    </div>
+                    {feature.notes ? (
+                      <p className="mt-2 text-sm text-rose-500">{feature.notes}</p>
+                    ) : null}
+                    {feature.is_prominent ? (
+                      <span className="mt-3 inline-flex rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-600">
+                        Highlighted detail
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </article>
 
         <aside className="flex flex-col gap-8">

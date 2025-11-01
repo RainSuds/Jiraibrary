@@ -106,6 +106,18 @@ export type TagSummary = {
   type: string;
 };
 
+export type ImagePreview = {
+  id: string | null;
+  url: string;
+  is_cover: boolean;
+};
+
+export type ImageDetail = ImagePreview & {
+  type: string;
+  width: number | null;
+  height: number | null;
+};
+
 export type ItemSummary = {
   slug: string;
   name: string;
@@ -117,6 +129,7 @@ export type ItemSummary = {
   primary_price: PriceSummary | null;
   colors: ColorSummary[];
   tags: TagSummary[];
+  cover_image: ImagePreview | null;
 };
 
 export type ItemTranslationPayload = {
@@ -163,6 +176,36 @@ export type ItemMetadataPayload = {
   ai_confidence: string | null;
 };
 
+export type ItemCollectionPlacement = {
+  id: string;
+  name: string;
+  season: string | null;
+  year: number | null;
+  brand_slug: string | null;
+  role: string;
+};
+
+export type ItemSubstyleDetail = {
+  id: string;
+  name: string;
+  slug: string;
+  weight: string | null;
+};
+
+export type ItemFabricDetail = {
+  id: string;
+  name: string;
+  percentage: string | null;
+};
+
+export type ItemFeatureDetail = {
+  id: string;
+  name: string;
+  category: string;
+  is_prominent: boolean;
+  notes: string;
+};
+
 export type ItemListResponse = {
   results: ItemSummary[];
   result_count: number;
@@ -203,6 +246,12 @@ export type ItemDetail = {
   variants: ItemVariantPayload[];
   colors: ColorSummary[];
   tags: TagSummary[];
+  collections: ItemCollectionPlacement[];
+  substyles: ItemSubstyleDetail[];
+  fabrics: ItemFabricDetail[];
+  features: ItemFeatureDetail[];
+  cover_image: ImagePreview | null;
+  gallery: ImageDetail[];
 };
 
 export async function getBrandList(): Promise<BrandListResponse> {

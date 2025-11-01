@@ -157,19 +157,6 @@ class CategorySerializer(serializers.ModelSerializer):
         ]
 
 
-class StyleSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = models.Style
-        fields = [
-            "id",
-            "name",
-            "slug",
-            "description",
-            "created_at",
-            "updated_at",
-        ]
-
-
 class SubcategorySerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     category_id = serializers.PrimaryKeyRelatedField(
@@ -683,19 +670,11 @@ class ItemDetailSerializer(ItemSummarySerializer):
             feature = getattr(link, "feature", None)
             if not feature:
                 continue
-            style = getattr(substyle, "style", None)
             results.append(
                 {
                     "id": str(feature.id),
                     "name": feature.name,
                     "category": feature.category,
-                    "style": {
-                        "id": str(style.id),
-                        "name": style.name,
-                        "slug": style.slug,
-                    }
-                    if style
-                    else None,
                     "is_prominent": link.is_prominent,
                     "notes": link.notes,
                 }
