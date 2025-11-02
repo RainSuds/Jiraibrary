@@ -1,5 +1,10 @@
-import { defineConfig } from "vitest/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import react from "@vitejs/plugin-react";
+import { defineConfig } from "vitest/config";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
@@ -16,10 +21,21 @@ export default defineConfig({
       "src/**/__tests__/**/*.ts",
       "src/**/__tests__/**/*.tsx",
     ],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "lcov", "html"],
+      reportsDirectory: "./coverage",
+      thresholds: {
+        statements: 70,
+        branches: 60,
+        functions: 65,
+        lines: 70,
+      },
+    },
   },
   resolve: {
     alias: {
-      "@": new URL("./src", import.meta.url).pathname,
+      "@": path.resolve(__dirname, "./src"),
     },
   },
 });

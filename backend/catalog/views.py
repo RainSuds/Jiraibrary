@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from django.db.models import Count, Prefetch, Q, QuerySet
+from django.conf import settings
+from django.db.models import Count, Max, Min, Prefetch, Q, QuerySet
 from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -220,256 +221,447 @@ class ItemViewSet(viewsets.ReadOnlyModelViewSet):
             }
         )
 
-    def _extract_selected_filters(self, request) -> dict[str, str | None]:
+    def _extract_selected_filters(self, request) -> dict[str, Any]:
         def normalize(value: str | None) -> str | None:
             if value is None or value == "":
                 return None
             return value
 
+        def normalize_list(param: str) -> list[str]:
+            values = [value for value in request.query_params.getlist(param) if value]
+            return values
+
+        def normalize_number(param: str) -> float | None:
+            raw = request.query_params.get(param)
+            if raw is None or raw == "":
+                return None
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                return None
+
+        def parse_int(value: str | None) -> int | None:
+            if value in (None, ""):
+                return None
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+
+        def parse_float(value: str | None) -> float | None:
+            if value in (None, ""):
+                return None
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+
+        release_year_ranges: list[dict[str, int | None | str]] = []
+        for raw in request.query_params.getlist("release_year_range"):
+            if raw is None:
+                continue
+            min_part, sep, max_part = raw.partition(":")
+            min_value = parse_int(min_part) if sep else parse_int(raw)
+            max_value = parse_int(max_part) if sep else None
+            if min_value is None and max_value is None:
+                continue
+            value_key = f"{min_part}:{max_part}" if sep else min_part
+            release_year_ranges.append(
+                {
+                    "min": min_value,
+                    "max": max_value,
+                    "value_key": value_key,
+                }
+            )
+
+        currency_setting = getattr(settings, "PREFERRED_CURRENCY_CODE", None)
+        price_currency = (
+            currency_setting
+            if isinstance(currency_setting, str) and currency_setting
+            else "USD"
+        )
+        price_ranges: list[dict[str, float | str | None]] = []
+        for raw in request.query_params.getlist("price_range"):
+            if raw is None:
+                continue
+            parts = raw.split(":")
+            if len(parts) == 3:
+                currency_part, min_part, max_part = parts
+            elif len(parts) == 2:
+                currency_part, min_part = parts
+                max_part = ""
+            else:
+                currency_part = parts[0] if parts else ""
+                min_part = ""
+                max_part = ""
+            currency_code = currency_part or price_currency
+            min_value = parse_float(min_part)
+            max_value = parse_float(max_part)
+            if currency_code is None or (min_value is None and max_value is None):
+                continue
+            value_key = f"{currency_code}:{min_part}:{max_part}"
+            price_ranges.append(
+                {
+                    "currency": currency_code,
+                    "min": min_value,
+                    "max": max_value,
+                    "value_key": value_key,
+                }
+            )
+
         return {
             "q": normalize(request.query_params.get("q")),
-            "brand": normalize(request.query_params.get("brand")),
-            "category": normalize(request.query_params.get("category")),
-            "style": normalize(request.query_params.get("style")),
-            "tag": normalize(request.query_params.get("tag")),
-            "color": normalize(request.query_params.get("color")),
-            "collection": normalize(request.query_params.get("collection")),
+            "brand": normalize_list("brand"),
+            "category": normalize_list("category"),
+            "subcategory": normalize_list("subcategory"),
+            "style": normalize_list("style"),
+            "substyle": normalize_list("substyle"),
+            "tag": normalize_list("tag"),
+            "color": normalize_list("color"),
+            "collection": normalize_list("collection"),
+            "fabric": normalize_list("fabric"),
+            "feature": normalize_list("feature"),
+            "measurement": {
+                "bust_min": normalize_number("measurement_bust_min"),
+                "bust_max": normalize_number("measurement_bust_max"),
+                "waist_min": normalize_number("measurement_waist_min"),
+                "waist_max": normalize_number("measurement_waist_max"),
+                "hip_min": normalize_number("measurement_hip_min"),
+                "hip_max": normalize_number("measurement_hip_max"),
+                "length_min": normalize_number("measurement_length_min"),
+                "length_max": normalize_number("measurement_length_max"),
+            },
+            "release_year_ranges": release_year_ranges,
+            "price_currency": price_currency,
+            "price_ranges": price_ranges,
         }
 
-    def _build_filters_payload(self, selected: dict[str, str | None]) -> dict[str, list[dict[str, Any]]]:
+    def _build_filters_payload(self, selected: dict[str, Any]) -> dict[str, Any]:
         published_filter = Q(items__status=models.Item.ItemStatus.PUBLISHED)
-        style_published_filter = Q(substyles__items__status=models.Item.ItemStatus.PUBLISHED)
+        style_published_filter = Q(
+            substyles__items__status=models.Item.ItemStatus.PUBLISHED
+        )
+        measurement_filter = Q(item__status=models.Item.ItemStatus.PUBLISHED)
 
-        brand_options: list[dict[str, Any]] = []
-        for brand in (
+        selected_brand_slugs = set(cast(list[str], selected.get("brand") or []))
+        selected_category_ids = set(cast(list[str], selected.get("category") or []))
+        selected_subcategory_ids = set(cast(list[str], selected.get("subcategory") or []))
+        selected_style_slugs = set(cast(list[str], selected.get("style") or []))
+        selected_substyle_slugs = set(cast(list[str], selected.get("substyle") or []))
+        selected_tag_ids = set(cast(list[str], selected.get("tag") or []))
+        selected_color_ids = set(cast(list[str], selected.get("color") or []))
+        selected_collection_ids = set(cast(list[str], selected.get("collection") or []))
+        selected_fabric_ids = set(cast(list[str], selected.get("fabric") or []))
+        selected_feature_ids = set(cast(list[str], selected.get("feature") or []))
+
+        brand_queryset = (
             models.Brand.objects.annotate(
                 item_count=Count("items", filter=published_filter, distinct=True)
             )
-            .filter(item_count__gt=0)
-            .order_by("-item_count", "slug")[:24]
-        ):
-            item_count = int(getattr(brand, "item_count", 0) or 0)
-            brand_options.append(
+            .filter(Q(item_count__gt=0) | Q(slug__in=selected_brand_slugs))
+            .order_by("-item_count", "slug")
+        )
+        brand_options = [
+            {
+                "slug": brand.slug,
+                "name": brand.display_name(),
+                "selected": brand.slug in selected_brand_slugs,
+                "item_count": int(getattr(brand, "item_count", 0) or 0),
+                "country": brand.country,
+            }
+            for brand in brand_queryset[:48]
+        ]
+
+        subcategory_queryset = (
+            models.Subcategory.objects.annotate(
+                item_count=Count("items", filter=published_filter, distinct=True)
+            )
+            .filter(Q(item_count__gt=0) | Q(id__in=selected_subcategory_ids))
+            .select_related("category")
+            .order_by("category__name", "name")
+        )
+        subcategory_map: dict[str, list[dict[str, Any]]] = {}
+        for subcategory in subcategory_queryset:
+            category_rel = subcategory.category
+            if not category_rel:
+                continue
+            category_id = str(category_rel.id)
+            subcategory_map.setdefault(category_id, []).append(
                 {
-                    "slug": brand.slug,
-                    "name": brand.display_name(),
-                    "selected": brand.slug == selected.get("brand"),
-                    "item_count": item_count,
-                    "country": brand.country,
+                    "id": str(subcategory.id),
+                    "name": subcategory.name,
+                    "selected": str(subcategory.id) in selected_subcategory_ids,
+                    "item_count": int(getattr(subcategory, "item_count", 0) or 0),
                 }
             )
-        brand_value = selected.get("brand")
-        if brand_value and all(option["slug"] != brand_value for option in brand_options):
-            extra_brand = (
-                models.Brand.objects.annotate(
-                    item_count=Count("items", filter=published_filter, distinct=True)
-                )
-                .filter(slug=brand_value)
-                .first()
-            )
-            if extra_brand and getattr(extra_brand, "item_count", 0):
-                brand_options.append(
-                    {
-                        "slug": extra_brand.slug,
-                        "name": extra_brand.display_name(),
-                        "selected": True,
-                        "item_count": int(getattr(extra_brand, "item_count", 0) or 0),
-                        "country": extra_brand.country,
-                    }
-                )
-        brand_options.sort(key=lambda option: (-int(option["item_count"]), str(option["slug"])))
 
-        category_options: list[dict[str, Any]] = []
-        for category in (
+        category_queryset = (
             models.Category.objects.annotate(
                 item_count=Count("items", filter=published_filter, distinct=True)
             )
-            .filter(item_count__gt=0)
-            .order_by("name")[:24]
-        ):
-            item_count = int(getattr(category, "item_count", 0) or 0)
+            .filter(
+                Q(item_count__gt=0)
+                | Q(id__in=selected_category_ids)
+                | Q(subcategories__id__in=selected_subcategory_ids)
+            )
+            .order_by("name")
+            .distinct()
+        )
+        category_options = []
+        for category in category_queryset:
+            category_id = str(category.id)
+            subcategories = subcategory_map.get(category_id, [])
+            category_selected = (
+                category_id in selected_category_ids
+                or any(sub_option["selected"] for sub_option in subcategories)
+            )
             category_options.append(
                 {
-                    "id": str(category.id),
+                    "id": category_id,
                     "name": category.name,
-                    "selected": str(category.id) == (selected.get("category") or ""),
-                    "item_count": item_count,
+                    "selected": category_selected,
+                    "item_count": int(getattr(category, "item_count", 0) or 0),
+                    "subcategories": subcategories,
                 }
             )
-        category_value = selected.get("category")
-        if category_value and all(option["id"] != category_value for option in category_options):
-            extra_category = (
-                models.Category.objects.annotate(
-                    item_count=Count("items", filter=published_filter, distinct=True)
-                )
-                .filter(id=category_value)
-                .first()
-            )
-            if extra_category and getattr(extra_category, "item_count", 0):
-                category_options.append(
-                    {
-                        "id": str(extra_category.id),
-                        "name": extra_category.name,
-                        "selected": True,
-                        "item_count": int(getattr(extra_category, "item_count", 0) or 0),
-                    }
-                )
-        category_options.sort(key=lambda option: str(option["name"]))
+        category_options.sort(key=lambda option: option["name"])
 
-        style_options: list[dict[str, Any]] = []
-        for style in (
-            models.Style.objects.annotate(
-                item_count=Count("substyles__items", filter=style_published_filter, distinct=True)
+        substyle_queryset = (
+            models.Substyle.objects.annotate(
+                item_count=Count("items", filter=published_filter, distinct=True)
             )
-            .filter(item_count__gt=0)
-            .order_by("name")[:24]
-        ):
-            item_count = int(getattr(style, "item_count", 0) or 0)
+            .filter(Q(item_count__gt=0) | Q(slug__in=selected_substyle_slugs))
+            .select_related("style")
+            .order_by("style__name", "name")
+        )
+        substyle_map: dict[str, list[dict[str, Any]]] = {}
+        for substyle in substyle_queryset:
+            if not substyle.style:
+                continue
+            style_slug = substyle.style.slug
+            if not style_slug:
+                continue
+            substyle_map.setdefault(style_slug, []).append(
+                {
+                    "slug": substyle.slug,
+                    "name": substyle.name,
+                    "selected": substyle.slug in selected_substyle_slugs,
+                    "item_count": int(getattr(substyle, "item_count", 0) or 0),
+                }
+            )
+
+        style_queryset = (
+            models.Style.objects.annotate(
+                item_count=Count(
+                    "substyles__items", filter=style_published_filter, distinct=True
+                )
+            )
+            .filter(Q(item_count__gt=0) | Q(slug__in=selected_style_slugs))
+            .order_by("name")
+        )
+        style_options = []
+        for style in style_queryset:
+            substyles = substyle_map.get(style.slug, [])
+            style_selected = style.slug in selected_style_slugs or any(
+                sub_option["selected"] for sub_option in substyles
+            )
             style_options.append(
                 {
                     "slug": style.slug,
                     "name": style.name,
-                    "selected": style.slug == selected.get("style"),
-                    "item_count": item_count,
+                    "selected": style_selected,
+                    "item_count": int(getattr(style, "item_count", 0) or 0),
+                    "substyles": substyles,
                 }
             )
-        style_value = selected.get("style")
-        if style_value and all(option["slug"] != style_value for option in style_options):
-            extra_style = (
-                models.Style.objects.annotate(
-                    item_count=Count("substyles__items", filter=style_published_filter, distinct=True)
-                )
-                .filter(slug=style_value)
-                .first()
-            )
-            if extra_style and getattr(extra_style, "item_count", 0):
-                style_options.append(
-                    {
-                        "slug": extra_style.slug,
-                        "name": extra_style.name,
-                        "selected": True,
-                        "item_count": int(getattr(extra_style, "item_count", 0) or 0),
-                    }
-                )
-        style_options.sort(key=lambda option: str(option["name"]))
+        style_options.sort(key=lambda option: option["name"])
 
-        tag_options: list[dict[str, Any]] = []
-        for tag in (
+        tag_queryset = (
             models.Tag.objects.annotate(
                 item_count=Count("items", filter=published_filter, distinct=True)
             )
-            .filter(item_count__gt=0)
-            .order_by("-item_count", "name")[:30]
-        ):
-            item_count = int(getattr(tag, "item_count", 0) or 0)
-            tag_options.append(
-                {
-                    "id": str(tag.id),
-                    "name": tag.name,
-                    "selected": str(tag.id) == (selected.get("tag") or ""),
-                    "type": tag.type,
-                    "item_count": item_count,
-                }
-            )
-        tag_value = selected.get("tag")
-        if tag_value and all(option["id"] != tag_value for option in tag_options):
-            extra_tag = (
-                models.Tag.objects.annotate(
-                    item_count=Count("items", filter=published_filter, distinct=True)
-                )
-                .filter(id=tag_value)
-                .first()
-            )
-            if extra_tag and getattr(extra_tag, "item_count", 0):
-                tag_options.append(
-                    {
-                        "id": str(extra_tag.id),
-                        "name": extra_tag.name,
-                        "selected": True,
-                        "type": extra_tag.type,
-                        "item_count": int(getattr(extra_tag, "item_count", 0) or 0),
-                    }
-                )
-        tag_options.sort(key=lambda option: (-int(option["item_count"]), str(option["name"])))
+            .filter(Q(item_count__gt=0) | Q(id__in=selected_tag_ids))
+            .order_by("-item_count", "name")
+        )
+        tag_options = [
+            {
+                "id": str(tag.id),
+                "name": tag.name,
+                "selected": str(tag.id) in selected_tag_ids,
+                "type": tag.type,
+                "item_count": int(getattr(tag, "item_count", 0) or 0),
+            }
+            for tag in tag_queryset[:60]
+        ]
 
-        color_options: list[dict[str, Any]] = []
-        for color in (
+        color_queryset = (
             models.Color.objects.annotate(
                 item_count=Count("items", filter=published_filter, distinct=True)
             )
-            .filter(item_count__gt=0)
-            .order_by("-item_count", "name")[:24]
-        ):
-            item_count = int(getattr(color, "item_count", 0) or 0)
-            color_options.append(
-                {
-                    "id": str(color.id),
-                    "name": color.name,
-                    "selected": str(color.id) == (selected.get("color") or ""),
-                    "hex": color.hex_code,
-                    "item_count": item_count,
-                }
-            )
-        color_value = selected.get("color")
-        if color_value and all(option["id"] != color_value for option in color_options):
-            extra_color = (
-                models.Color.objects.annotate(
-                    item_count=Count("items", filter=published_filter, distinct=True)
-                )
-                .filter(id=color_value)
-                .first()
-            )
-            if extra_color and getattr(extra_color, "item_count", 0):
-                color_options.append(
-                    {
-                        "id": str(extra_color.id),
-                        "name": extra_color.name,
-                        "selected": True,
-                        "hex": extra_color.hex_code,
-                        "item_count": int(getattr(extra_color, "item_count", 0) or 0),
-                    }
-                )
-        color_options.sort(key=lambda option: (-int(option["item_count"]), str(option["name"])))
+            .filter(Q(item_count__gt=0) | Q(id__in=selected_color_ids))
+            .order_by("-item_count", "name")
+        )
+        color_options = [
+            {
+                "id": str(color.id),
+                "name": color.name,
+                "selected": str(color.id) in selected_color_ids,
+                "hex": color.hex_code,
+                "item_count": int(getattr(color, "item_count", 0) or 0),
+            }
+            for color in color_queryset[:48]
+        ]
 
-        collection_options: list[dict[str, Any]] = [
+        collection_queryset = (
+            models.Collection.objects.annotate(
+                item_count=Count("items", filter=published_filter, distinct=True)
+            )
+            .filter(Q(item_count__gt=0) | Q(id__in=selected_collection_ids))
+            .select_related("brand")
+            .order_by("-year", "name")
+        )
+        collection_options = [
             {
                 "id": str(collection.id),
                 "name": collection.name,
                 "brand_slug": collection.brand.slug if collection.brand else None,
                 "year": collection.year,
-                "selected": str(collection.id) == (selected.get("collection") or ""),
+                "selected": str(collection.id) in selected_collection_ids,
             }
-            for collection in models.Collection.objects.annotate(
+            for collection in collection_queryset[:48]
+        ]
+
+        fabric_queryset = (
+            models.Fabric.objects.annotate(
                 item_count=Count("items", filter=published_filter, distinct=True)
             )
-            .filter(item_count__gt=0)
-            .order_by("-year", "name")[:24]
+            .filter(Q(item_count__gt=0) | Q(id__in=selected_fabric_ids))
+            .order_by("name")
+        )
+        fabric_options = [
+            {
+                "id": str(fabric.id),
+                "name": fabric.name,
+                "selected": str(fabric.id) in selected_fabric_ids,
+                "item_count": int(getattr(fabric, "item_count", 0) or 0),
+            }
+            for fabric in fabric_queryset[:48]
         ]
-        collection_value = selected.get("collection")
-        if collection_value and all(option["id"] != collection_value for option in collection_options):
-            extra_collection = (
-                models.Collection.objects.annotate(
-                    item_count=Count("items", filter=published_filter, distinct=True)
+
+        feature_queryset = (
+            models.Feature.objects.annotate(
+                item_count=Count("items", filter=published_filter, distinct=True)
+            )
+            .filter(Q(item_count__gt=0) | Q(id__in=selected_feature_ids))
+            .order_by("name")
+        )
+        feature_options = [
+            {
+                "id": str(feature.id),
+                "name": feature.name,
+                "selected": str(feature.id) in selected_feature_ids,
+                "category": feature.category,
+                "item_count": int(getattr(feature, "item_count", 0) or 0),
+            }
+            for feature in feature_queryset[:48]
+        ]
+
+        measurement_ranges = models.ItemMeasurement.objects.aggregate(
+            bust_min=Min("bust_cm", filter=measurement_filter),
+            bust_max=Max("bust_cm", filter=measurement_filter),
+            waist_min=Min("waist_cm", filter=measurement_filter),
+            waist_max=Max("waist_cm", filter=measurement_filter),
+            hip_min=Min("hip_cm", filter=measurement_filter),
+            hip_max=Max("hip_cm", filter=measurement_filter),
+            length_min=Min("length_cm", filter=measurement_filter),
+            length_max=Max("length_cm", filter=measurement_filter),
+        )
+
+        release_year_ranges = models.Item.objects.filter(
+            status=models.Item.ItemStatus.PUBLISHED,
+            release_year__isnull=False,
+        ).aggregate(
+            min_year=Min("release_year"),
+            max_year=Max("release_year"),
+        )
+
+        currency_setting = getattr(settings, "PREFERRED_CURRENCY_CODE", None)
+        preferred_currency = (
+            currency_setting
+            if isinstance(currency_setting, str) and currency_setting
+            else None
+        )
+        price_stats: dict[str, Any] | None = None
+        if preferred_currency:
+            price_stats = (
+                models.ItemPrice.objects.filter(
+                    item__status=models.Item.ItemStatus.PUBLISHED,
+                    currency__code=preferred_currency,
+                ).aggregate(
+                    min_amount=Min("amount"),
+                    max_amount=Max("amount"),
                 )
-                .filter(id=collection_value)
+            )
+        if (
+            not price_stats
+            or (
+                price_stats.get("min_amount") is None
+                and price_stats.get("max_amount") is None
+            )
+        ):
+            fallback_currency = (
+                models.ItemPrice.objects.filter(
+                    item__status=models.Item.ItemStatus.PUBLISHED
+                )
+                .values("currency__code")
+                .annotate(currency_count=Count("id"))
+                .order_by("-currency_count")
                 .first()
             )
-            if extra_collection and getattr(extra_collection, "item_count", 0):
-                collection_options.append(
-                    {
-                        "id": str(extra_collection.id),
-                        "name": extra_collection.name,
-                        "brand_slug": extra_collection.brand.slug if extra_collection.brand else None,
-                        "year": extra_collection.year,
-                        "selected": True,
-                    }
+            if fallback_currency:
+                preferred_currency = fallback_currency.get("currency__code")
+                price_stats = (
+                    models.ItemPrice.objects.filter(
+                        item__status=models.Item.ItemStatus.PUBLISHED,
+                        currency__code=preferred_currency,
+                    ).aggregate(
+                        min_amount=Min("amount"),
+                        max_amount=Max("amount"),
+                    )
                 )
-        collection_options.sort(
-            key=lambda option: (
-                -int(option["year"]) if option["year"] is not None else 0,
-                str(option["name"]),
-            )
-        )
+
+        preferred_currency = preferred_currency or "USD"
+
+        measurement_options = [
+            {
+                "field": "bust_cm",
+                "label": "Bust",
+                "unit": "cm",
+                "min": float(measurement_ranges["bust_min"]) if measurement_ranges.get("bust_min") is not None else None,
+                "max": float(measurement_ranges["bust_max"]) if measurement_ranges.get("bust_max") is not None else None,
+            },
+            {
+                "field": "waist_cm",
+                "label": "Waist",
+                "unit": "cm",
+                "min": float(measurement_ranges["waist_min"]) if measurement_ranges.get("waist_min") is not None else None,
+                "max": float(measurement_ranges["waist_max"]) if measurement_ranges.get("waist_max") is not None else None,
+            },
+            {
+                "field": "hip_cm",
+                "label": "Hip",
+                "unit": "cm",
+                "min": float(measurement_ranges["hip_min"]) if measurement_ranges.get("hip_min") is not None else None,
+                "max": float(measurement_ranges["hip_max"]) if measurement_ranges.get("hip_max") is not None else None,
+            },
+            {
+                "field": "length_cm",
+                "label": "Length",
+                "unit": "cm",
+                "min": float(measurement_ranges["length_min"]) if measurement_ranges.get("length_min") is not None else None,
+                "max": float(measurement_ranges["length_max"]) if measurement_ranges.get("length_max") is not None else None,
+            },
+        ]
 
         return {
             "brands": brand_options,
@@ -478,52 +670,233 @@ class ItemViewSet(viewsets.ReadOnlyModelViewSet):
             "tags": tag_options,
             "colors": color_options,
             "collections": collection_options,
+            "fabrics": fabric_options,
+            "features": feature_options,
+            "measurements": measurement_options,
+            "release_year": {
+                "min": release_year_ranges.get("min_year"),
+                "max": release_year_ranges.get("max_year"),
+            },
+            "prices": {
+                "currency": preferred_currency,
+                "min": float(price_stats["min_amount"]) if price_stats and price_stats.get("min_amount") is not None else None,
+                "max": float(price_stats["max_amount"]) if price_stats and price_stats.get("max_amount") is not None else None,
+            },
         }
 
-    def _build_active_filters(self, selected: dict[str, str | None]) -> list[dict[str, str]]:
+    def _build_active_filters(self, selected: dict[str, Any]) -> list[dict[str, str]]:
         active: list[dict[str, str]] = []
 
-        if selected.get("q"):
-            active.append({"label": "Search", "value": selected["q"] or "", "param": "q"})
+        search_value = selected.get("q")
+        if search_value:
+            active.append({"label": "Search", "value": cast(str, search_value), "param": "q"})
 
-        if selected.get("brand"):
-            brand = models.Brand.objects.filter(slug=selected["brand"]).first()
+        for slug in dict.fromkeys(cast(list[str], selected.get("brand") or [])):
+            brand = models.Brand.objects.filter(slug=slug).first()
             if brand:
                 active.append(
-                    {"label": "Brand", "value": brand.display_name(), "param": "brand"}
+                    {
+                        "label": "Brand",
+                        "value": brand.display_name(),
+                        "param": "brand",
+                        "value_key": brand.slug,
+                    }
                 )
 
-        if selected.get("category"):
-            category = models.Category.objects.filter(id=selected["category"]).first()
+        for category_id in dict.fromkeys(cast(list[str], selected.get("category") or [])):
+            category = models.Category.objects.filter(id=category_id).first()
             if category:
                 active.append(
-                    {"label": "Category", "value": category.name, "param": "category"}
+                    {
+                        "label": "Category",
+                        "value": category.name,
+                        "param": "category",
+                        "value_key": str(category.id),
+                    }
                 )
 
-        if selected.get("tag"):
-            tag = models.Tag.objects.filter(id=selected["tag"]).first()
-            if tag:
-                active.append({"label": "Tag", "value": tag.name, "param": "tag"})
-
-        if selected.get("style"):
-            style = models.Style.objects.filter(slug=selected["style"]).first()
-            if style:
-                active.append({"label": "Style", "value": style.name, "param": "style"})
-
-        if selected.get("color"):
-            color = models.Color.objects.filter(id=selected["color"]).first()
-            if color:
-                active.append({"label": "Color", "value": color.name, "param": "color"})
-
-        if selected.get("collection"):
-            collection = models.Collection.objects.filter(id=selected["collection"]).first()
-            if collection:
-                label = f"{collection.name}"
-                if collection.year:
-                    label = f"{collection.year} {label}".strip()
+        for subcategory_id in dict.fromkeys(cast(list[str], selected.get("subcategory") or [])):
+            subcategory = (
+                models.Subcategory.objects.select_related("category").filter(id=subcategory_id).first()
+            )
+            if subcategory:
+                value_label = subcategory.name
+                if subcategory.category:
+                    value_label = f"{subcategory.category.name} › {subcategory.name}"
                 active.append(
-                    {"label": "Collection", "value": label, "param": "collection"}
+                    {
+                        "label": "Subcategory",
+                        "value": value_label,
+                        "param": "subcategory",
+                        "value_key": str(subcategory.id),
+                    }
                 )
+
+        for style_slug in dict.fromkeys(cast(list[str], selected.get("style") or [])):
+            style = models.Style.objects.filter(slug=style_slug).first()
+            if style:
+                active.append(
+                    {
+                        "label": "Style",
+                        "value": style.name,
+                        "param": "style",
+                        "value_key": style.slug,
+                    }
+                )
+
+        for substyle_slug in dict.fromkeys(cast(list[str], selected.get("substyle") or [])):
+            substyle = (
+                models.Substyle.objects.select_related("style").filter(slug=substyle_slug).first()
+            )
+            if substyle:
+                value_label = substyle.name
+                if substyle.style:
+                    value_label = f"{substyle.style.name} › {substyle.name}"
+                active.append(
+                    {
+                        "label": "Substyle",
+                        "value": value_label,
+                        "param": "substyle",
+                        "value_key": substyle.slug,
+                    }
+                )
+
+        for tag_id in dict.fromkeys(cast(list[str], selected.get("tag") or [])):
+            tag = models.Tag.objects.filter(id=tag_id).first()
+            if tag:
+                active.append(
+                    {
+                        "label": "Tag",
+                        "value": tag.name,
+                        "param": "tag",
+                        "value_key": str(tag.id),
+                    }
+                )
+
+        for color_id in dict.fromkeys(cast(list[str], selected.get("color") or [])):
+            color = models.Color.objects.filter(id=color_id).first()
+            if color:
+                active.append(
+                    {
+                        "label": "Color",
+                        "value": color.name,
+                        "param": "color",
+                        "value_key": str(color.id),
+                    }
+                )
+
+        for fabric_id in dict.fromkeys(cast(list[str], selected.get("fabric") or [])):
+            fabric = models.Fabric.objects.filter(id=fabric_id).first()
+            if fabric:
+                active.append(
+                    {
+                        "label": "Fabric",
+                        "value": fabric.name,
+                        "param": "fabric",
+                        "value_key": str(fabric.id),
+                    }
+                )
+
+        for feature_id in dict.fromkeys(cast(list[str], selected.get("feature") or [])):
+            feature = models.Feature.objects.filter(id=feature_id).first()
+            if feature:
+                active.append(
+                    {
+                        "label": "Feature",
+                        "value": feature.name,
+                        "param": "feature",
+                        "value_key": str(feature.id),
+                    }
+                )
+
+        for collection_id in dict.fromkeys(cast(list[str], selected.get("collection") or [])):
+            collection = models.Collection.objects.filter(id=collection_id).first()
+            if collection:
+                display_name = collection.name
+                if collection.year:
+                    display_name = f"{collection.year} {collection.name}"
+                active.append(
+                    {
+                        "label": "Collection",
+                        "value": display_name,
+                        "param": "collection",
+                        "value_key": str(collection.id),
+                    }
+                )
+
+        measurement = cast(dict[str, float | None], selected.get("measurement") or {})
+        measurement_labels = {
+            "bust_min": ("Bust", "measurement_bust_min", "≥"),
+            "bust_max": ("Bust", "measurement_bust_max", "≤"),
+            "waist_min": ("Waist", "measurement_waist_min", "≥"),
+            "waist_max": ("Waist", "measurement_waist_max", "≤"),
+            "hip_min": ("Hip", "measurement_hip_min", "≥"),
+            "hip_max": ("Hip", "measurement_hip_max", "≤"),
+            "length_min": ("Length", "measurement_length_min", "≥"),
+            "length_max": ("Length", "measurement_length_max", "≤"),
+        }
+        for key, (label, param_name, comparator) in measurement_labels.items():
+            value = measurement.get(key)
+            if value is None:
+                continue
+            value_str = f"{value:g}"
+            active.append(
+                {
+                    "label": label,
+                    "value": f"{comparator} {value_str} cm",
+                    "param": param_name,
+                    "value_key": value_str,
+                }
+            )
+
+        for release_range in cast(list[dict[str, Any]], selected.get("release_year_ranges") or []):
+            min_year = release_range.get("min")
+            max_year = release_range.get("max")
+            value_key = release_range.get("value_key")
+            if min_year is None and max_year is None:
+                continue
+            if not isinstance(value_key, str) or not value_key:
+                continue
+            if min_year is None:
+                label_value = f"≤ {max_year}"
+            elif max_year is None:
+                label_value = f"≥ {min_year}"
+            else:
+                label_value = f"{min_year}–{max_year}"
+            active.append(
+                {
+                    "label": "Release year",
+                    "value": label_value,
+                    "param": "release_year_range",
+                    "value_key": value_key,
+                }
+            )
+
+        for price_range in cast(list[dict[str, Any]], selected.get("price_ranges") or []):
+            currency = price_range.get("currency")
+            min_price = price_range.get("min")
+            max_price = price_range.get("max")
+            value_key = price_range.get("value_key")
+            if not isinstance(currency, str) or not currency:
+                continue
+            if min_price is None and max_price is None:
+                continue
+            if not isinstance(value_key, str) or not value_key:
+                continue
+            if min_price is None:
+                label_value = f"≤ {max_price:g} {currency}"
+            elif max_price is None:
+                label_value = f"≥ {min_price:g} {currency}"
+            else:
+                label_value = f"{min_price:g}–{max_price:g} {currency}"
+            active.append(
+                {
+                    "label": "Price",
+                    "value": label_value,
+                    "param": "price_range",
+                    "value_key": value_key,
+                }
+            )
 
         return active
 
@@ -536,6 +909,7 @@ class ItemFavoriteViewSet(
 ):
     serializer_class = serializers.ItemFavoriteSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
     lookup_field = "pk"
 
     def get_queryset(self):  # type: ignore[override]
@@ -571,6 +945,7 @@ class ItemSubmissionViewSet(
 ):
     serializer_class = serializers.ItemSubmissionSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
 
     def get_queryset(self):  # type: ignore[override]
         request = cast(Request, self.request)

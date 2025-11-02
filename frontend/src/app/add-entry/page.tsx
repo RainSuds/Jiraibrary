@@ -57,7 +57,10 @@ export default function AddEntryPage() {
         <p className="mt-3 text-sm text-rose-500">
           Please
           {" "}
-          <Link href="/login" className="font-semibold text-rose-700 hover:text-rose-900">
+          <Link
+            href="/login?next=%2Fadd-entry"
+            className="font-semibold text-rose-700 hover:text-rose-900"
+          >
             login
           </Link>
           {" "}

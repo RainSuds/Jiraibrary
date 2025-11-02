@@ -1,7 +1,5 @@
 # Catalog Schema Reference (Django 5.2)
 
-Last updated: **1 November 2025** after consolidating migrations into `catalog/0001_initial.py` and `catalog/0002_style_alter_substyle_options_alter_substyle_name_and_more.py`.
-
 This document mirrors the current Django models under `backend/catalog/models.py`. Every model inherits from `TimeStampedUUIDModel`, giving each table a UUID primary key named `id` and `created_at` / `updated_at` timestamp columns.
 
 ---

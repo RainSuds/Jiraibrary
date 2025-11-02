@@ -24,7 +24,7 @@ from catalog.views import (  # type: ignore[F401]
     StyleViewSet,
     TagViewSet,
 )
-from users.views import CurrentUserView, GoogleLoginView, LoginView, LogoutView
+from users.views import CurrentUserView, GoogleLoginView, LoginView, LogoutView, RegisterView
 
 router = DefaultRouter()
 router.register(r"brands", BrandViewSet)
@@ -55,6 +55,7 @@ urlpatterns = [
     ),
     path("api/auth/login/", LoginView.as_view(), name="api-login"),
     path("api/auth/google/", GoogleLoginView.as_view(), name="api-google-login"),
+    path("api/auth/register/", RegisterView.as_view(), name="api-register"),
     path("api/auth/logout/", LogoutView.as_view(), name="api-logout"),
     path("api/auth/me/", CurrentUserView.as_view(), name="api-current-user"),
     path("api/", include(router.urls)),

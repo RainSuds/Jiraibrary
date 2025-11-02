@@ -334,6 +334,58 @@ describe("FilterPanel", () => {
     expect(priceValues).toContain("USD:250:");
   });
 
+  it("supports adding multiple release year ranges", async () => {
+    renderPanel();
+    const user = userEvent.setup();
+
+    const releaseFieldset = await ensureSectionOpen(user, "release-years-content");
+
+    const [firstMinInput] = within(releaseFieldset).getAllByLabelText("Min year");
+    await user.clear(firstMinInput);
+    await user.type(firstMinInput, "2020");
+    await flushTransitions();
+
+    await user.click(within(releaseFieldset).getByRole("button", { name: /Add range/i }));
+
+    const minInputs = within(releaseFieldset).getAllByLabelText("Min year");
+    expect(minInputs).toHaveLength(2);
+    const secondMinInput = minInputs[1] as HTMLInputElement;
+    await user.type(secondMinInput, "2022");
+
+    await flushTransitions();
+
+    const form = document.querySelector("form");
+    expect(form).not.toBeNull();
+    const releaseFormData = new FormData(form as HTMLFormElement);
+    const releaseValues = releaseFormData.getAll("release_year_range");
+    expect(releaseValues).toContain("2020:2024");
+    expect(releaseValues).toContain("2022:2024");
+  });
+
+  it("removes price ranges and clears committed values", async () => {
+    renderPanel();
+    const user = userEvent.setup();
+
+    const priceFieldset = await ensureSectionOpen(user, "prices-content");
+
+    const minPriceInput = within(priceFieldset).getByLabelText("Min price") as HTMLInputElement;
+    await user.clear(minPriceInput);
+    await user.type(minPriceInput, "250");
+    await flushTransitions();
+
+    await user.click(within(priceFieldset).getByTitle("Remove range"));
+
+    await flushTransitions();
+
+    const form = document.querySelector("form");
+    expect(form).not.toBeNull();
+    const priceFormData = new FormData(form as HTMLFormElement);
+    expect(priceFormData.getAll("price_range")).toHaveLength(0);
+    expect(form?.querySelector('input[name="price_currency"]')).toBeNull();
+    expect(currentSearch.getAll("price_range")).toHaveLength(0);
+    expect(currentSearch.get("price_currency")).toBeNull();
+  });
+
   it("filters options based on search input", async () => {
     renderPanel();
     const user = userEvent.setup();

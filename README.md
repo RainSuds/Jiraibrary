@@ -89,8 +89,6 @@ README.md
 
 ### Day 2 – Models & API
 
-### Day 2 – Models & API
-
 **Define models in Django**
 - `Brand`
 - `Tag`

@@ -373,6 +373,7 @@ export type UserProfile = {
   is_staff: boolean;
   display_name: string;
   role: UserRole | null;
+  avatar_url: string | null;
 };
 
 export type AuthResponse = {
@@ -409,7 +410,7 @@ export async function login(identifier: string, password: string): Promise<AuthR
   const response = await fetch(buildUrl("api/auth/login/"), {
     method: "POST",
     headers: buildJsonHeaders(),
-    body: JSON.stringify({ username: identifier, password }),
+    body: JSON.stringify({ identifier, username: identifier, password }),
   });
   return handleJsonResponse<AuthResponse>(response);
 }
@@ -429,6 +430,27 @@ export async function logout(token: string): Promise<void> {
     headers: buildAuthHeaders(token),
   });
   await handleJsonResponse<void>(response);
+}
+
+export type RegisterPayload = {
+  username: string;
+  email: string;
+  password: string;
+  displayName?: string;
+};
+
+export async function register(payload: RegisterPayload): Promise<AuthResponse> {
+  const response = await fetch(buildUrl("api/auth/register/"), {
+    method: "POST",
+    headers: buildJsonHeaders(),
+    body: JSON.stringify({
+      username: payload.username,
+      email: payload.email,
+      password: payload.password,
+      display_name: payload.displayName ?? payload.username,
+    }),
+  });
+  return handleJsonResponse<AuthResponse>(response);
 }
 
 export async function getCurrentUser(token: string): Promise<UserProfile> {

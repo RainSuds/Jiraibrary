@@ -2,30 +2,45 @@
 
 import { CredentialResponse, GoogleLogin } from "@react-oauth/google";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, loginWithGoogle, loading, user } = useAuth();
+  const searchParams = useSearchParams();
+  const nextRoute = useMemo(() => {
+    const raw = searchParams?.get("next") ?? "/profile";
+    if (!raw.startsWith("/") || raw.startsWith("//")) {
+      return "/profile";
+    }
+    return raw;
+  }, [searchParams]);
+
+  const { login, loginWithGoogle, register, loading, user } = useAuth();
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [registerUsername, setRegisterUsername] = useState("");
+  const [registerEmail, setRegisterEmail] = useState("");
+  const [registerDisplayName, setRegisterDisplayName] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
+  const [registerConfirmPassword, setRegisterConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [googlePending, setGooglePending] = useState(false);
 
   useEffect(() => {
     if (user) {
-      router.replace("/add-entry");
+      router.replace(nextRoute);
     }
-  }, [router, user]);
+  }, [router, user, nextRoute]);
 
   if (user) {
     return (
       <div className="mx-auto w-full max-w-md rounded-3xl border border-rose-100 bg-white/90 p-8 text-center shadow-lg">
-        <p className="text-sm font-medium text-rose-600">Redirecting to Add Entry…</p>
+        <p className="text-sm font-medium text-rose-600">Redirecting to your profile…</p>
       </div>
     );
   }
@@ -35,10 +50,23 @@ export default function LoginPage() {
     setError(null);
     setPending(true);
     try {
-      await login(identifier, password);
-      router.push("/add-entry");
+      if (mode === "login") {
+        await login(identifier, password);
+      } else {
+        if (registerPassword !== registerConfirmPassword) {
+          throw new Error("Passwords do not match.");
+        }
+        await register({
+          username: registerUsername,
+          email: registerEmail,
+          password: registerPassword,
+          displayName: registerDisplayName.trim() || undefined,
+        });
+      }
+      router.push(nextRoute);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to login. Please try again.");
+      const fallback = mode === "login" ? "Unable to login. Please try again." : "Unable to register. Please try again.";
+      setError(err instanceof Error ? err.message : fallback);
     } finally {
       setPending(false);
     }
@@ -53,7 +81,7 @@ export default function LoginPage() {
     setGooglePending(true);
     try {
       await loginWithGoogle(credentialResponse.credential);
-      router.push("/add-entry");
+      router.push(nextRoute);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to login with Google. Please try again.");
     } finally {
@@ -67,42 +95,120 @@ export default function LoginPage() {
 
   return (
     <div className="mx-auto w-full max-w-md rounded-3xl border border-rose-100 bg-white/90 p-8 shadow-lg">
-      <h1 className="text-2xl font-semibold text-rose-900">Login</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-rose-900">
+          {mode === "login" ? "Login" : "Create an account"}
+        </h1>
+        <button
+          type="button"
+          className="text-xs font-semibold text-rose-500 underline-offset-2 hover:underline"
+          onClick={() => {
+            setMode((current) => (current === "login" ? "register" : "login"));
+            setError(null);
+          }}
+        >
+          {mode === "login" ? "Need an account? Register" : "Already registered? Login"}
+        </button>
+      </div>
       <p className="mt-2 text-sm text-rose-500">
-        Use your Jiraibrary credentials to access favorites and submit new entries.
+        {mode === "login"
+          ? "Use your Jiraibrary credentials to access favorites and submit new entries."
+          : "Sign up to save favorites, submit new entries, and personalize your profile."}
       </p>
       <form className="mt-6 flex flex-col gap-4" onSubmit={handleSubmit}>
-        <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
-          Username or email
-          <input
-            className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
-            value={identifier}
-            onChange={(event) => setIdentifier(event.target.value)}
-            required
-            autoComplete="username"
-          />
-        </label>
-        <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
-          Password
-          <input
-            type="password"
-            className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-            autoComplete="current-password"
-          />
-        </label>
+        {mode === "login" ? (
+          <>
+            <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
+              Username or email
+              <input
+                className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
+                value={identifier}
+                onChange={(event) => setIdentifier(event.target.value)}
+                required
+                autoComplete="username"
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
+              Password
+              <input
+                type="password"
+                className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+                autoComplete="current-password"
+              />
+            </label>
+          </>
+        ) : (
+          <>
+            <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
+              Username
+              <input
+                className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
+                value={registerUsername}
+                onChange={(event) => setRegisterUsername(event.target.value)}
+                required
+                autoComplete="username"
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
+              Email
+              <input
+                type="email"
+                className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
+                value={registerEmail}
+                onChange={(event) => setRegisterEmail(event.target.value)}
+                required
+                autoComplete="email"
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
+              Display name (optional)
+              <input
+                className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
+                value={registerDisplayName}
+                onChange={(event) => setRegisterDisplayName(event.target.value)}
+                placeholder="How other users will see you"
+                autoComplete="nickname"
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
+              Password
+              <input
+                type="password"
+                className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
+                value={registerPassword}
+                onChange={(event) => setRegisterPassword(event.target.value)}
+                required
+                autoComplete="new-password"
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
+              Confirm password
+              <input
+                type="password"
+                className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
+                value={registerConfirmPassword}
+                onChange={(event) => setRegisterConfirmPassword(event.target.value)}
+                required
+                autoComplete="new-password"
+              />
+            </label>
+          </>
+        )}
         {error ? <p className="text-sm text-rose-600">{error}</p> : null}
         <button
           type="submit"
-          disabled={pending || loading || googlePending}
+          disabled={pending || loading || (mode === "login" && googlePending)}
           className="mt-2 rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {pending || loading ? "Signing in…" : "Login"}
+          {pending || loading
+            ? mode === "login" ? "Signing in…" : "Creating account…"
+            : mode === "login" ? "Login" : "Register"}
         </button>
       </form>
-      {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
+      {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID && mode === "login" ? (
         <div className="mt-6 flex flex-col items-center gap-4">
           <div className="flex w-full items-center gap-3 text-xs text-rose-400">
             <span className="h-px flex-1 bg-rose-100" aria-hidden="true" />
@@ -120,14 +226,20 @@ export default function LoginPage() {
         </div>
       ) : null}
       <div className="mt-6 text-xs text-rose-500">
-        <p>
-          Need an account? Ask an administrator to invite you. Admin panel is available at
-          {" "}
-          <Link href="/admin/" className="font-semibold text-rose-700 hover:text-rose-900">
-            /admin
-          </Link>
-          .
-        </p>
+        {mode === "login" ? (
+          <p>
+            Need an account? Switch to the registration form above to get started. Admin panel remains available at
+            {" "}
+            <Link href="/admin/" className="font-semibold text-rose-700 hover:text-rose-900">
+              /admin
+            </Link>
+            .
+          </p>
+        ) : (
+          <p>
+            Already have access? Toggle back to the login form to sign in with your credentials or Google account.
+          </p>
+        )}
       </div>
     </div>
   );

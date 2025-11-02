@@ -9,6 +9,8 @@ import {
   login as apiLogin,
   loginWithGoogle as apiLoginWithGoogle,
   logout as apiLogout,
+  register as apiRegister,
+  RegisterPayload,
 } from "@/lib/api";
 
 type AuthContextValue = {
@@ -17,6 +19,7 @@ type AuthContextValue = {
   loading: boolean;
   login: (identifier: string, password: string) => Promise<AuthResponse>;
   loginWithGoogle: (idToken: string) => Promise<AuthResponse>;
+  register: (payload: RegisterPayload) => Promise<AuthResponse>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -91,6 +94,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const register = async (payload: RegisterPayload) => {
+    setLoading(true);
+    try {
+      const auth = await apiRegister(payload);
+      setToken(auth.token);
+      setUser(auth.user);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(STORAGE_KEY, auth.token);
+      }
+      return auth;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const logout = async () => {
     if (!token) {
       setUser(null);
@@ -122,6 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     login,
     loginWithGoogle,
+    register,
     logout,
     refresh,
   };
