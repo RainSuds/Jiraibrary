@@ -1,17 +1,19 @@
 import Link from "next/link";
 
+import FilterPanel from "@/components/filter-panel";
 import SearchBar from "@/components/search-bar";
 import {
   ActiveFilter,
-  BrandFilterOption,
-  CollectionFilterOption,
-  FilterOption,
   ImagePreview,
   ItemListResponse,
   ItemSummary,
   PriceSummary,
   getItemList,
 } from "@/lib/api";
+import {
+  MEASUREMENT_PARAM_MAP,
+  type MeasurementSelectionKey,
+} from "./filter-constants";
 
 type SearchPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -19,44 +21,119 @@ type SearchPageProps = {
 
 type SelectedFilters = ItemListResponse["selected"];
 
-type OverrideRecord = Record<string, string | undefined | null>;
-
 const PLACEHOLDER_IMAGE_URL = "https://placehold.co/600x800?text=Jiraibrary";
 
-function normalizeParam(
-  value: string | string[] | undefined
-): string | undefined {
+const MULTI_VALUE_KEYS = [
+  "brand",
+  "category",
+  "subcategory",
+  "style",
+  "substyle",
+  "tag",
+  "color",
+  "collection",
+  "fabric",
+  "feature",
+] as const;
+
+type MultiValueKey = (typeof MULTI_VALUE_KEYS)[number];
+
+function ensureArray(value: string | string[] | undefined): string[] {
   if (Array.isArray(value)) {
-    return value[0];
+    return value.filter((entry) => entry !== undefined && entry !== null && entry !== "");
   }
-  return value ?? undefined;
+  if (value === undefined || value === null || value === "") {
+    return [];
+  }
+  return [value];
 }
 
-function buildHref(selected: SelectedFilters, overrides: OverrideRecord): string {
+function ensureSingle(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (entry !== undefined && entry !== null && entry !== "") {
+        return entry;
+      }
+    }
+    return undefined;
+  }
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  return value;
+}
+
+function buildClearHref(query: string | undefined): string {
+  if (!query) {
+    return "/search";
+  }
   const params = new URLSearchParams();
-  const keys = Object.keys(selected) as Array<keyof SelectedFilters>;
+  params.set("q", query);
+  return `/search?${params.toString()}`;
+}
 
-  for (const key of keys) {
-    const override = overrides[key as string];
-    if (override !== undefined && override !== null && override !== "") {
-      params.set(key, override);
-      continue;
-    }
+function buildRemovalHref(selected: SelectedFilters, filter: ActiveFilter): string {
+  const params = new URLSearchParams();
 
-    if (override === "" || override === null) {
-      continue;
-    }
+  if (selected.q && filter.param !== "q") {
+    params.set("q", selected.q);
+  }
 
-    const value = selected[key];
-    if (value) {
-      params.set(key, value);
+  for (const key of MULTI_VALUE_KEYS) {
+    const values = selected[key];
+    for (const value of values) {
+      const removeAll = filter.param === key && !filter.value_key;
+      const removeSpecific = filter.param === key && filter.value_key === value;
+      if (removeAll || removeSpecific) {
+        continue;
+      }
+      params.append(key, value);
     }
   }
 
-  for (const [key, value] of Object.entries(overrides)) {
-    if (!(key in selected) && value) {
-      params.set(key, value);
+  for (const { key, param } of MEASUREMENT_PARAM_MAP) {
+    const measurementValue = selected.measurement[key as MeasurementSelectionKey];
+    if (measurementValue === null || measurementValue === undefined) {
+      continue;
     }
+    const removeAll = filter.param === param && !filter.value_key;
+    const removeSpecific = filter.param === param && filter.value_key === `${measurementValue}`;
+    if (removeAll || removeSpecific) {
+      continue;
+    }
+    params.set(param, `${measurementValue}`);
+  }
+
+  for (const yearRange of selected.release_year_ranges) {
+    const valueKey = yearRange.value_key;
+    const removeRange = filter.param === "release_year_range" && filter.value_key === valueKey;
+    if (removeRange) {
+      continue;
+    }
+    const minPart = yearRange.min !== null && yearRange.min !== undefined ? `${yearRange.min}` : "";
+    const maxPart = yearRange.max !== null && yearRange.max !== undefined ? `${yearRange.max}` : "";
+    const serialized = maxPart ? `${minPart}:${maxPart}` : minPart;
+    if (serialized) {
+      params.append("release_year_range", serialized);
+    }
+  }
+
+  let appendedPriceRange = false;
+  for (const priceRange of selected.price_ranges) {
+    const valueKey = priceRange.value_key;
+    const removeRange = filter.param === "price_range" && filter.value_key === valueKey;
+    if (removeRange) {
+      continue;
+    }
+    const minPart = priceRange.min !== null && priceRange.min !== undefined ? `${priceRange.min}` : "";
+    const maxPart = priceRange.max !== null && priceRange.max !== undefined ? `${priceRange.max}` : "";
+    const serialized = `${priceRange.currency}:${minPart}:${maxPart}`;
+    params.append("price_range", serialized);
+    appendedPriceRange = true;
+  }
+
+  if (appendedPriceRange && selected.price_currency && !params.has("price_currency")) {
+    params.set("price_currency", selected.price_currency);
   }
 
   const query = params.toString();
@@ -79,7 +156,7 @@ function formatPrice(price: PriceSummary | null): string | null {
       currency: price.currency,
       maximumFractionDigits: 0,
     }).format(amount);
-  } catch (error) {
+  } catch {
     return `${price.amount} ${price.currency}`;
   }
 }
@@ -95,12 +172,16 @@ function ActiveFilterChips({
     return null;
   }
 
+  const clearHref = buildClearHref(selected.q ?? undefined);
+
   return (
     <ul className="flex flex-wrap gap-2">
       {activeFilters.map((filter) => (
-        <li key={`${filter.param}-${filter.value}`}>
+        <li
+          key={`${filter.param}-${filter.value}-${filter.value_key ?? ""}`}
+        >
           <Link
-            href={buildHref(selected, { [filter.param]: undefined })}
+            href={buildRemovalHref(selected, filter)}
             className="group inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white/90 px-4 py-1.5 text-sm text-rose-600 transition hover:border-rose-300 hover:text-rose-800"
           >
             <span className="font-medium text-rose-800 group-hover:text-rose-900">
@@ -113,120 +194,13 @@ function ActiveFilterChips({
       ))}
       <li>
         <Link
-          href="/search"
+          href={clearHref}
           className="inline-flex items-center gap-2 rounded-full border border-transparent bg-rose-100 px-4 py-1.5 text-sm font-medium text-rose-600 transition hover:bg-rose-200 hover:text-rose-800"
         >
           Clear all
         </Link>
       </li>
     </ul>
-  );
-}
-
-function FilterSection<T extends { name: string; selected: boolean }>({
-  title,
-  options,
-  param,
-  selected,
-  getValue,
-  renderSubtitle,
-}: {
-  title: string;
-  options: T[];
-  param: keyof SelectedFilters;
-  selected: SelectedFilters;
-  getValue: (option: T) => string;
-  renderSubtitle?: (option: T) => string | null;
-}) {
-  if (options.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-rose-500">
-        {title}
-      </h3>
-      <ul className="flex flex-col gap-2">
-        {options.map((option) => {
-          const value = getValue(option);
-          const isSelected = option.selected;
-          const nextValue = isSelected ? undefined : value;
-          const href = buildHref(selected, { [param]: nextValue });
-          const subtitle = renderSubtitle?.(option);
-
-          return (
-            <li key={`${param}-${value}`}>
-              <Link
-                href={href}
-                className={`block rounded-xl border px-4 py-3 text-sm transition ${
-                  isSelected
-                    ? "border-rose-600 bg-rose-600 text-white"
-                    : "border-rose-200 bg-white/90 text-rose-600 hover:border-rose-300 hover:text-rose-800"
-                }`}
-              >
-                <span className="font-medium">{option.name}</span>
-                {subtitle ? (
-                  <span
-                    className={`block text-xs ${
-                      isSelected ? "text-rose-100" : "text-rose-300"
-                    }`}
-                  >
-                    {subtitle}
-                  </span>
-                ) : null}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
-function ColorFilterSection({
-  options,
-  selected,
-}: {
-  options: FilterOption[];
-  selected: SelectedFilters;
-}) {
-  if (options.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-rose-500">
-        Colors
-      </h3>
-      <div className="flex flex-wrap gap-2">
-        {options.map((option) => {
-          const value = option.id;
-          const isSelected = option.selected;
-          const nextValue = isSelected ? undefined : value;
-          const href = buildHref(selected, { color: nextValue });
-
-          return (
-            <Link
-              key={`color-${value}`}
-              href={href}
-              className={`flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition ${
-                isSelected
-                  ? "border-rose-600 bg-rose-600 text-white"
-                  : "border-rose-200 bg-white/90 text-rose-600 hover:border-rose-300 hover:text-rose-800"
-              }`}
-            >
-              <span
-                className="h-3 w-3 rounded-full border border-rose-200/70"
-                style={{ backgroundColor: option.hex ?? "#d4d4d8" }}
-              />
-              <span>{option.name}</span>
-            </Link>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -310,16 +284,44 @@ function ItemCard({ item }: { item: ItemSummary }) {
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
   const resolvedSearchParams = await searchParams;
-  const normalizedParams = {
-    q: normalizeParam(resolvedSearchParams.q),
-    brand: normalizeParam(resolvedSearchParams.brand),
-    category: normalizeParam(resolvedSearchParams.category),
-    tag: normalizeParam(resolvedSearchParams.tag),
-    color: normalizeParam(resolvedSearchParams.color),
-    collection: normalizeParam(resolvedSearchParams.collection),
-  };
 
-  const data = await getItemList(normalizedParams);
+  const q = ensureSingle(resolvedSearchParams.q);
+  const apiParams: Record<string, string | string[] | undefined> = {};
+
+  if (q) {
+    apiParams.q = q;
+  }
+
+  for (const key of MULTI_VALUE_KEYS) {
+    const values = ensureArray(resolvedSearchParams[key]);
+    if (values.length > 0) {
+      apiParams[key] = values;
+    }
+  }
+
+  for (const { param } of MEASUREMENT_PARAM_MAP) {
+    const value = ensureSingle(resolvedSearchParams[param]);
+    if (value !== undefined) {
+      apiParams[param] = value;
+    }
+  }
+
+  const yearRanges = ensureArray(resolvedSearchParams.release_year_range);
+  if (yearRanges.length > 0) {
+    apiParams.release_year_range = yearRanges;
+  }
+
+  const priceRanges = ensureArray(resolvedSearchParams.price_range);
+  if (priceRanges.length > 0) {
+    apiParams.price_range = priceRanges;
+  }
+
+  const priceCurrency = ensureSingle(resolvedSearchParams.price_currency);
+  if (priceCurrency) {
+    apiParams.price_currency = priceCurrency;
+  }
+
+  const data = await getItemList(apiParams);
 
   return (
     <div className="flex flex-col gap-10">
@@ -332,57 +334,29 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
             Combine keywords with filters to narrow down specific silhouettes, colors, and collections.
           </p>
         </div>
-        <SearchBar initialQuery={normalizedParams.q ?? ""} />
+  <SearchBar initialQuery={q ?? ""} />
         <div className="flex flex-wrap items-center gap-3 text-sm text-rose-500">
           <span>
             {data.result_count.toLocaleString()} {data.result_count === 1 ? "result" : "results"}
           </span>
-          {normalizedParams.q ? (
+          {q ? (
             <span>
-              for <strong className="font-semibold text-rose-700">“{normalizedParams.q}”</strong>
+              for <strong className="font-semibold text-rose-700">“{q}”</strong>
             </span>
           ) : null}
         </div>
-        <ActiveFilterChips activeFilters={data.active_filters} selected={data.selected} />
+        <ActiveFilterChips
+          activeFilters={data.active_filters}
+          selected={data.selected}
+        />
       </section>
 
       <div className="grid gap-12 lg:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="flex flex-col gap-8">
-          <FilterSection
-            title="Brands"
-            options={data.filters.brands}
-            param="brand"
+          <FilterPanel
+            filters={data.filters}
             selected={data.selected}
-            getValue={(option) => option.slug}
-            renderSubtitle={(option) =>
-              option.item_count ? `${option.item_count} styles` : null
-            }
-          />
-          <FilterSection
-            title="Categories"
-            options={data.filters.categories}
-            param="category"
-            selected={data.selected}
-            getValue={(option) => option.id}
-          />
-          <FilterSection
-            title="Tags"
-            options={data.filters.tags}
-            param="tag"
-            selected={data.selected}
-            getValue={(option) => option.id}
-            renderSubtitle={(option) => (option.type ? option.type : null)}
-          />
-          <ColorFilterSection options={data.filters.colors} selected={data.selected} />
-          <FilterSection
-            title="Collections"
-            options={data.filters.collections}
-            param="collection"
-            selected={data.selected}
-            getValue={(option) => option.id}
-            renderSubtitle={(option) =>
-              option.year ? `${option.year} • ${option.brand_slug}` : option.brand_slug
-            }
+            query={q}
           />
         </aside>
 

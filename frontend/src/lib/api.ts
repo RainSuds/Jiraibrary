@@ -1,4 +1,4 @@
-type QueryParams = Record<string, string | undefined | null>;
+type QueryParams = Record<string, string | readonly string[] | undefined | null>;
 
 type HeadersInit = globalThis.HeadersInit;
 
@@ -12,7 +12,20 @@ function buildUrl(path: string, params?: QueryParams): string {
   const url = new URL(trimmed, API_BASE);
   if (params) {
     for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined && value !== null && value !== "") {
+      if (Array.isArray(value)) {
+        for (const entry of value) {
+          if (entry !== undefined && entry !== null && entry !== "") {
+            url.searchParams.append(key, entry);
+          }
+        }
+        continue;
+      }
+      if (
+        typeof value === "string" &&
+        value !== undefined &&
+        value !== null &&
+        value !== ""
+      ) {
         url.searchParams.set(key, value);
       }
     }
@@ -65,6 +78,10 @@ export type FilterOption = {
   item_count?: number;
 };
 
+export type CategoryFilterOption = FilterOption & {
+  subcategories: FilterOption[];
+};
+
 export type BrandFilterOption = {
   slug: string;
   name: string;
@@ -74,6 +91,14 @@ export type BrandFilterOption = {
 };
 
 export type StyleFilterOption = {
+  slug: string;
+  name: string;
+  selected: boolean;
+  item_count?: number;
+  substyles: SubstyleFilterOption[];
+};
+
+export type SubstyleFilterOption = {
   slug: string;
   name: string;
   selected: boolean;
@@ -88,10 +113,34 @@ export type CollectionFilterOption = {
   selected: boolean;
 };
 
+export type FeatureFilterOption = FilterOption & {
+  category?: string | null;
+};
+
+export type MeasurementOption = {
+  field: string;
+  label: string;
+  unit: string;
+  min: number | null;
+  max: number | null;
+};
+
+export type ReleaseYearFilter = {
+  min: number | null;
+  max: number | null;
+};
+
+export type PriceFilterOption = {
+  currency: string;
+  min: number | null;
+  max: number | null;
+};
+
 export type ActiveFilter = {
   label: string;
   value: string;
   param: string;
+  value_key?: string;
 };
 
 export type PriceSummary = {
@@ -218,20 +267,51 @@ export type ItemListResponse = {
   result_count: number;
   filters: {
     brands: BrandFilterOption[];
-    categories: FilterOption[];
+    categories: CategoryFilterOption[];
     styles: StyleFilterOption[];
     tags: FilterOption[];
     colors: FilterOption[];
     collections: CollectionFilterOption[];
+    fabrics: FilterOption[];
+    features: FeatureFilterOption[];
+    measurements: MeasurementOption[];
+    release_year: ReleaseYearFilter;
+    prices: PriceFilterOption;
   };
   selected: {
     q: string | null;
-    brand: string | null;
-    category: string | null;
-    style: string | null;
-    tag: string | null;
-    color: string | null;
-    collection: string | null;
+    brand: string[];
+    category: string[];
+    subcategory: string[];
+    style: string[];
+    substyle: string[];
+    tag: string[];
+    color: string[];
+    collection: string[];
+    fabric: string[];
+    feature: string[];
+    measurement: {
+      bust_min: number | null;
+      bust_max: number | null;
+      waist_min: number | null;
+      waist_max: number | null;
+      hip_min: number | null;
+      hip_max: number | null;
+      length_min: number | null;
+      length_max: number | null;
+    };
+    release_year_ranges: {
+      min: number | null;
+      max: number | null;
+      value_key: string;
+    }[];
+    price_currency: string | null;
+    price_ranges: {
+      currency: string;
+      min: number | null;
+      max: number | null;
+      value_key: string;
+    }[];
   };
   active_filters: ActiveFilter[];
 };
@@ -270,7 +350,7 @@ export async function getBrandList(): Promise<BrandListResponse> {
 }
 
 export async function getItemList(
-  params: Record<string, string | undefined>
+  params: Record<string, string | readonly string[] | undefined>
 ): Promise<ItemListResponse> {
   return fetchJson<ItemListResponse>("api/items/", params, { cache: "no-store" });
 }
