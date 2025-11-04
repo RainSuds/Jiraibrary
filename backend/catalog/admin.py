@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.contrib import admin
+from django.utils.html import format_html
 
 from . import models
 
@@ -152,9 +153,58 @@ class ItemAdmin(admin.ModelAdmin):
 
 @admin.register(models.Image)
 class ImageAdmin(admin.ModelAdmin):
-    list_display = ("storage_path", "type", "item", "brand", "is_cover")
+    list_display = ("image_preview", "type", "item", "brand", "is_cover")
     list_filter = ("type", "is_cover", "source")
     search_fields = ("storage_path", "item__slug", "brand__slug")
+    readonly_fields = ("storage_path", "image_preview")
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "image_file",
+                    "image_preview",
+                    "storage_path",
+                    "type",
+                    "caption",
+                    "is_cover",
+                )
+            },
+        ),
+        (
+            "Relationships",
+            {
+                "fields": (
+                    "item",
+                    "brand",
+                    "variant",
+                )
+            },
+        ),
+        (
+            "Metadata",
+            {
+                "classes": ("collapse",),
+                "fields": (
+                    "width",
+                    "height",
+                    "file_size_bytes",
+                    "hash_signature",
+                    "dominant_color",
+                    "source",
+                    "license",
+                ),
+            },
+        ),
+    )
+
+    def image_preview(self, obj: models.Image) -> str:
+        url = obj.media_url
+        if url:
+            return format_html('<img src="{}" style="max-height: 160px;" />', url)
+        return "—"
+
+    image_preview.short_description = "Preview"  # type: ignore[attr-defined]
 
 
 @admin.register(models.Language)

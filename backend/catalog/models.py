@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin
 
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
 
@@ -539,6 +542,55 @@ class ItemMetadata(TimeStampedUUIDModel):
         ordering = ["item__slug"]
 
 
+def image_upload_to(instance: Any, filename: str) -> str:
+    """Generate an S3 key grouped by brand/item folders with deterministic numbering."""
+
+    extension = Path(filename).suffix.lower() or ".jpg"
+
+    brand = instance.brand or getattr(instance.item, "brand", None)
+
+    def slug_or_blank(value: Any) -> str:
+        if not value:
+            return ""
+        candidate = slugify(str(value))
+        return candidate or ""
+
+    brand_slug = ""
+    if brand:
+        brand_slug = brand.slug or slug_or_blank(getattr(brand, "name", ""))
+    brand_slug = brand_slug or "unassigned"
+
+    item_slug = ""
+    if instance.item:
+        item_slug = instance.item.slug or slug_or_blank(getattr(instance.item, "name", ""))
+    elif instance.variant and instance.variant.item:
+        item_slug = instance.variant.item.slug or slug_or_blank(getattr(instance.variant.item, "name", ""))
+    if not item_slug and getattr(instance, "type", None):
+        item_slug = slug_or_blank(str(instance.type).replace("_", " "))
+    item_slug = item_slug or "misc"
+
+    media_prefix = getattr(settings, "AWS_S3_MEDIA_LOCATION", "").strip("/")
+    folder_parts = ([media_prefix] if media_prefix else []) + ["catalog", brand_slug, item_slug]
+
+    filename_root_parts = [part for part in (brand_slug, item_slug) if part]
+    filename_root = "_".join(filename_root_parts) or "image"
+
+    sequence = 1
+    if brand or instance.item or (instance.variant and instance.variant.item):
+        related_item = instance.item or getattr(instance.variant, "item", None)
+        queryset = Image.objects.all()
+        if related_item and getattr(related_item, "pk", None):
+            queryset = queryset.filter(item=related_item)
+        elif brand and getattr(brand, "pk", None):
+            queryset = queryset.filter(item__isnull=True, brand=brand)
+        else:
+            queryset = queryset.none()
+        sequence = max(queryset.count() + 1, 1)
+
+    filename_with_sequence = f"{filename_root}_{sequence:03d}{extension}"
+    return "/".join(part for part in folder_parts + [filename_with_sequence] if part)
+
+
 class Image(TimeStampedUUIDModel):
     class ImageType(models.TextChoices):
         COVER = "cover", _("Cover")
@@ -556,7 +608,8 @@ class Image(TimeStampedUUIDModel):
         blank=True,
         related_name="images",
     )
-    storage_path = models.CharField(max_length=512)
+    storage_path = models.CharField(max_length=512, blank=True)
+    image_file = models.ImageField(upload_to=image_upload_to, null=True, blank=True)
     type = models.CharField(max_length=16, choices=ImageType.choices, default=ImageType.GALLERY)
     caption = models.TextField(blank=True)
     is_cover = models.BooleanField(default=False)
@@ -570,6 +623,40 @@ class Image(TimeStampedUUIDModel):
 
     class Meta:
         ordering = ["-created_at"]
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        super().save(*args, **kwargs)
+        if self.image_file:
+            stored_value = self.image_file.name
+            if stored_value and self.storage_path != stored_value:
+                type(self).objects.filter(pk=self.pk).update(storage_path=stored_value)
+                self.storage_path = stored_value
+
+    @property
+    def media_url(self) -> str:
+        if self.storage_path:
+            if self.storage_path.startswith(("http://", "https://")):
+                return self.storage_path
+            base_url = getattr(settings, "MEDIA_URL", "") or ""
+            if base_url:
+                relative_path = self.storage_path.lstrip("/")
+                media_prefix = getattr(settings, "AWS_S3_MEDIA_LOCATION", "").strip("/")
+                if media_prefix:
+                    normalized_base = base_url.rstrip("/").lower()
+                    if normalized_base.endswith(f"/{media_prefix.lower()}"):
+                        prefix_with_slash = f"{media_prefix}/"
+                        if relative_path.lower().startswith(prefix_with_slash.lower()):
+                            relative_path = relative_path[len(prefix_with_slash) :]
+                if base_url.endswith("/"):
+                    return base_url + relative_path
+                return f"{base_url}/{relative_path}"
+            return self.storage_path
+        if self.image_file:
+            try:
+                return self.image_file.url
+            except Exception:  # pragma: no cover - storage backend handles URL resolution
+                return self.image_file.name
+        return ""
 
 
 class ItemTag(TimeStampedUUIDModel):

@@ -7,6 +7,8 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import migrations, models
 
+import catalog.models
+
 
 class Migration(migrations.Migration):
 
@@ -364,7 +366,8 @@ class Migration(migrations.Migration):
                 ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('storage_path', models.CharField(max_length=512)),
+                ('storage_path', models.CharField(blank=True, max_length=512)),
+                ('image_file', models.ImageField(blank=True, null=True, upload_to=catalog.models.image_upload_to)),
                 ('type', models.CharField(choices=[('cover', 'Cover'), ('gallery', 'Gallery'), ('detail', 'Detail'), ('brand_logo', 'Brand Logo'), ('lookbook', 'Lookbook')], default='gallery', max_length=16)),
                 ('caption', models.TextField(blank=True)),
                 ('is_cover', models.BooleanField(default=False)),

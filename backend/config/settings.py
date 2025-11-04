@@ -13,7 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 env = environ.Env(
-    DEBUG=(bool, True),
+    DEBUG=(bool, False),
     SECRET_KEY=(str, ""),
     ALLOWED_HOSTS=(list, ["localhost", "127.0.0.1"]),
     CORS_ALLOW_ALL_ORIGINS=(bool, False),
@@ -31,7 +31,7 @@ env = environ.Env(
     AWS_S3_MEDIA_LOCATION=(str, "media"),
     AWS_QUERYSTRING_AUTH=(bool, False),
     AWS_DEFAULT_ACL=(str, ""),
-    AWS_S3_FILE_OVERWRITE=(bool, False),
+    AWS_S3_FILE_OVERWRITE=(bool, True),
     DATABASE_REQUIRE_SSL=(bool, False),
     DB_CONN_MAX_AGE=(int, 60),
 )
@@ -205,11 +205,15 @@ if AWS_STORAGE_BUCKET_NAME:
     }
     STORAGES["default"] = {
         "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
-        "OPTIONS": {"location": AWS_S3_MEDIA_LOCATION},
+        "OPTIONS": {
+            "location": AWS_S3_MEDIA_LOCATION,
+            "file_overwrite": AWS_S3_FILE_OVERWRITE,
+        },
     }
 
     STATIC_URL = env("STATIC_URL", default=f"https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_S3_STATIC_LOCATION}/")  # type: ignore[arg-type]
-    MEDIA_URL = env("MEDIA_URL", default=f"https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_S3_MEDIA_LOCATION}/")  # type: ignore[arg-type]
+    media_base_default = f"https://{AWS_S3_CUSTOM_DOMAIN}/" if AWS_S3_CUSTOM_DOMAIN else ""
+    MEDIA_URL = env("MEDIA_URL", default=media_base_default)  # type: ignore[arg-type]
 
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

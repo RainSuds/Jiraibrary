@@ -302,9 +302,9 @@ class ImageSerializer(serializers.ModelSerializer):
         ]
 
     def get_url(self, obj: models.Image) -> str:
-        storage_path = getattr(obj, "storage_path", "")
-        if storage_path:
-            return storage_path
+        media_url = obj.media_url
+        if media_url:
+            return media_url
         return PLACEHOLDER_IMAGE_URL
 
 
@@ -323,9 +323,9 @@ class ItemImageSerializer(serializers.ModelSerializer):
         ]
 
     def get_url(self, obj: models.Image) -> str:
-        storage_path = getattr(obj, "storage_path", "")
-        if storage_path:
-            return storage_path
+        media_url = obj.media_url
+        if media_url:
+            return media_url
         return PLACEHOLDER_IMAGE_URL
 
 

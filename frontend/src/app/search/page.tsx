@@ -11,6 +11,7 @@ import {
   PriceSummary,
   getItemList,
 } from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/media";
 import {
   MEASUREMENT_PARAM_MAP,
   type MeasurementSelectionKey,
@@ -207,7 +208,7 @@ function resolveImage(preview: ImagePreview | null): string {
   if (!preview || !preview.url) {
     return PLACEHOLDER_IMAGE_URL;
   }
-  return preview.url;
+  return resolveMediaUrl(preview.url) ?? PLACEHOLDER_IMAGE_URL;
 }
 
 function ItemCard({ item }: { item: ItemSummary }) {

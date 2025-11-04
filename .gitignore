@@ -5,6 +5,17 @@ __pycache__/
 media/
 .DS_Store
 .copilot_instructions.md
+.env
 .env.local
+.env.production
+backend/.env
+backend/.env.local
+backend/.env.production
+backend/staticfiles/
+.azure/
+postgres_data/
+frontend/.next/
+frontend/node_modules/
 *.py[co]
 *.sqlite3
+!*.env.example

@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useMemo, useState } from "react";
 
 import type { ImageDetail } from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/media";
 
 type ItemGalleryProps = {
   images: ImageDetail[];
@@ -25,10 +26,13 @@ export default function ItemGallery({ images, alt, placeholderUrl }: ItemGallery
         },
       ];
     }
-    return images.map((image) => ({
-      ...image,
-      url: image.url || placeholderUrl,
-    }));
+    return images.map((image) => {
+      const resolved = resolveMediaUrl(image.url) ?? placeholderUrl;
+      return {
+        ...image,
+        url: resolved,
+      };
+    });
   }, [images, placeholderUrl]);
 
   const [index, setIndex] = useState(0);
