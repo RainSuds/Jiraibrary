@@ -1,0 +1,16 @@
+.git
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyc
+*.pyd
+*.sqlite3
+.env
+.env.*
+.vscode/
+media/
+postgres_data/
+.azure/
+frontend/
+README.md
+schema_design.md

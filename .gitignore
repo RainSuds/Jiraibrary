@@ -16,7 +16,7 @@ backend/staticfiles/
 postgres_data/
 frontend/.next/
 frontend/node_modules/
-node_modules/
+node_modules/*
 *.py[co]
 *.sqlite3
 !*.env.example
