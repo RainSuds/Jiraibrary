@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import FilterPanel from "@/components/filter-panel";
@@ -35,8 +36,6 @@ const MULTI_VALUE_KEYS = [
   "fabric",
   "feature",
 ] as const;
-
-type MultiValueKey = (typeof MULTI_VALUE_KEYS)[number];
 
 function ensureArray(value: string | string[] | undefined): string[] {
   if (Array.isArray(value)) {
@@ -221,14 +220,17 @@ function ItemCard({ item }: { item: ItemSummary }) {
       className="group flex flex-col gap-3 rounded-2xl border border-rose-100 bg-white/90 p-5 shadow-sm transition hover:-translate-y-1 hover:border-rose-200 hover:shadow-lg"
     >
       <div
-        className="overflow-hidden rounded-xl border border-rose-50 bg-rose-50"
+        className="relative overflow-hidden rounded-xl border border-rose-50 bg-rose-50"
         style={{ aspectRatio: "3 / 4" }}
       >
-        <img
+        <Image
           src={imageUrl}
           alt={`${item.name} cover`}
+          fill
+          sizes="(min-width: 1280px) 18vw, (min-width: 640px) 40vw, 80vw"
           className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
           loading="lazy"
+          unoptimized
         />
       </div>
       <div className="flex items-center justify-between">

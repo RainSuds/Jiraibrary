@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type FilterDropdownOption = {
   value: string;
@@ -75,6 +75,11 @@ export default function FilterDropdown({
     return Array.from(groups.entries());
   }, [filteredOptions]);
 
+  const closeDropdown = useCallback(() => {
+    setOpen(false);
+    setSearch("");
+  }, []);
+
   // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -82,21 +87,14 @@ export default function FilterDropdown({
         return;
       }
       if (!containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
+        closeDropdown();
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, []);
-
-  // Reset search when closing
-  useEffect(() => {
-    if (!open) {
-      setSearch("");
-    }
-  }, [open]);
+  }, [closeDropdown]);
 
   const handleToggle = (value: string) => {
     onToggle(value);
@@ -208,10 +206,16 @@ export default function FilterDropdown({
           className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-rose-200 text-sm text-rose-500 transition hover:border-rose-300 hover:text-rose-700"
           onClick={(event) => {
             event.stopPropagation();
-            setOpen((prev) => !prev);
-            if (!open && inputRef.current) {
-              inputRef.current.focus();
-            }
+            setOpen((prev) => {
+              if (prev) {
+                setSearch("");
+                return false;
+              }
+              if (inputRef.current) {
+                inputRef.current.focus();
+              }
+              return true;
+            });
           }}
         >
           {open ? "−" : "+"}

@@ -11,6 +11,11 @@ const pushMock = vi.fn();
 const replaceMock = vi.fn();
 let searchParams = new URLSearchParams();
 
+const syncSearchParams = (query: string) => {
+  window.history.replaceState({}, "", query ? `/login?${query}` : "/login");
+  searchParams = new URLSearchParams(query);
+};
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: pushMock,
@@ -63,7 +68,7 @@ let registerMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("NEXT_PUBLIC_GOOGLE_CLIENT_ID", "");
-  searchParams = new URLSearchParams();
+  syncSearchParams("");
   googleHandlers = {};
   loginMock = vi.fn().mockResolvedValue({});
   loginWithGoogleMock = vi.fn().mockResolvedValue({});
@@ -89,7 +94,7 @@ afterEach(() => {
 describe("LoginPage", () => {
   it("submits credentials and routes to the next destination", async () => {
     const user = userEvent.setup();
-    searchParams = new URLSearchParams("next=/add-entry");
+    syncSearchParams("next=/add-entry");
 
     render(<LoginPage />);
 
@@ -194,7 +199,7 @@ describe("LoginPage", () => {
 
   it("sanitizes unsafe next destinations before redirecting", async () => {
     const user = userEvent.setup();
-    searchParams = new URLSearchParams("next=//evil.example");
+    syncSearchParams("next=//evil.example");
 
     render(<LoginPage />);
 

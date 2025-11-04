@@ -2,21 +2,26 @@
 
 import { CredentialResponse, GoogleLogin } from "@react-oauth/google";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 
 export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const nextRoute = useMemo(() => {
-    const raw = searchParams?.get("next") ?? "/profile";
-    if (!raw.startsWith("/") || raw.startsWith("//")) {
+    try {
+      if (typeof window === "undefined") return "/profile";
+      const params = new URLSearchParams(window.location.search);
+      const raw = params.get("next") ?? "/profile";
+      if (!raw.startsWith("/") || raw.startsWith("//")) {
+        return "/profile";
+      }
+      return raw;
+    } catch {
       return "/profile";
     }
-    return raw;
-  }, [searchParams]);
+  }, []);
 
   const { login, loginWithGoogle, register, loading, user } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");

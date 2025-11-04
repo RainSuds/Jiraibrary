@@ -1,5 +1,6 @@
 'use client';
 
+import Image from "next/image";
 import { useMemo, useState } from "react";
 
 import type { ImageDetail } from "@/lib/api";
@@ -43,8 +44,19 @@ export default function ItemGallery({ images, alt, placeholderUrl }: ItemGallery
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="relative overflow-hidden rounded-3xl border border-rose-100 bg-rose-50" style={{ aspectRatio: "3 / 4" }}>
-        <img src={current.url} alt={alt} className="h-full w-full object-cover" loading="lazy" />
+      <div
+        className="relative overflow-hidden rounded-3xl border border-rose-100 bg-rose-50"
+        style={{ aspectRatio: "3 / 4" }}
+      >
+        <Image
+          src={current.url}
+          alt={alt}
+          fill
+          sizes="(min-width: 1024px) 50vw, 100vw"
+          className="h-full w-full object-cover"
+          loading="lazy"
+          unoptimized
+        />
         {slides.length > 1 ? (
           <>
             <button

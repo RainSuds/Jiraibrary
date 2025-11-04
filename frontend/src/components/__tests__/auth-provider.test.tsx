@@ -1,10 +1,10 @@
 import { act, render, waitFor } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { forwardRef, useImperativeHandle } from "react";
-import type { MockInstance } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthProvider, useAuth } from "@/components/auth-provider";
+import * as api from "@/lib/api";
 
 type MockUser = {
   id: string;
@@ -16,31 +16,19 @@ type MockUser = {
   avatar_url: string | null;
 };
 
-type ApiAuthResponse = {
-  token: string;
-  user: MockUser;
-};
-
-const loginMock = vi.fn() as MockInstance<[string, string], Promise<ApiAuthResponse>>;
-const loginWithGoogleMock = vi.fn() as MockInstance<[string], Promise<ApiAuthResponse>>;
-const registerMock = vi.fn() as MockInstance<[
-  {
-    username: string;
-    email: string;
-    password: string;
-    displayName?: string;
-  }
-], Promise<ApiAuthResponse>>;
-const logoutMock = vi.fn() as MockInstance<[string], Promise<void>>;
-const getCurrentUserMock = vi.fn() as MockInstance<[string], Promise<MockUser>>;
-
 vi.mock("@/lib/api", () => ({
-  login: loginMock,
-  loginWithGoogle: loginWithGoogleMock,
-  register: registerMock,
-  logout: logoutMock,
-  getCurrentUser: getCurrentUserMock,
+  login: vi.fn(),
+  loginWithGoogle: vi.fn(),
+  register: vi.fn(),
+  logout: vi.fn(),
+  getCurrentUser: vi.fn(),
 }));
+
+const loginMock = vi.mocked(api.login);
+const loginWithGoogleMock = vi.mocked(api.loginWithGoogle);
+const registerMock = vi.mocked(api.register);
+const logoutMock = vi.mocked(api.logout);
+const getCurrentUserMock = vi.mocked(api.getCurrentUser);
 
 type AuthHandle = ReturnType<typeof useAuth>;
 

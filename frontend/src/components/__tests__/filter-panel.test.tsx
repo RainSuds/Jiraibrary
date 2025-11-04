@@ -233,8 +233,8 @@ describe("FilterPanel", () => {
     renderPanel();
     const user = userEvent.setup();
 
-    const brandFieldset = await ensureSectionOpen(user, "brand-content");
-    await user.click(await screen.findByRole("button", { name: /Hermès/ }));
+  await ensureSectionOpen(user, "brand-content");
+  await user.click(await screen.findByRole("button", { name: /Hermès/ }));
 
     await flushTransitions();
     expect(routerReplaceMock.mock.calls).toContainEqual(["/search?brand=hermes", { scroll: false }]);
@@ -244,7 +244,7 @@ describe("FilterPanel", () => {
     renderPanel();
     const user = userEvent.setup();
 
-    const categoryFieldset = await ensureSectionOpen(user, "category-content");
+  await ensureSectionOpen(user, "category-content");
     await user.click(screen.getByRole("button", { name: /Dresses/ }));
     await flushTransitions();
     expect(routerReplaceMock.mock.calls).toContainEqual(["/search?category=dresses", { scroll: false }]);
@@ -262,7 +262,7 @@ describe("FilterPanel", () => {
     renderPanel();
     const user = userEvent.setup();
 
-    const colorFieldset = await ensureSectionOpen(user, "colors-content");
+  await ensureSectionOpen(user, "colors-content");
 
     const swatch = screen.getByRole("button", { name: /Red/ }).querySelector("span[aria-hidden='true']");
     expect(swatch).not.toBeNull();
@@ -303,12 +303,8 @@ describe("FilterPanel", () => {
     await flushTransitions();
     const form = document.querySelector("form");
     expect(form).not.toBeNull();
-    const releaseFormData = new FormData(form as HTMLFormElement);
-    const releaseValues = releaseFormData.getAll("release_year_range");
-    // eslint-disable-next-line no-console
-    console.log("release hidden inputs", Array.from(document.querySelectorAll('input[name="release_year_range"]')).map((input) => (input as HTMLInputElement).value));
-    // eslint-disable-next-line no-console
-    console.log("release form data", releaseValues);
+  const releaseFormData = new FormData(form as HTMLFormElement);
+  const releaseValues = releaseFormData.getAll("release_year_range");
     expect(releaseValues).toContain("2021:2024");
   });
 
@@ -325,12 +321,8 @@ describe("FilterPanel", () => {
     await flushTransitions();
     const form = document.querySelector("form");
     expect(form).not.toBeNull();
-    const priceFormData = new FormData(form as HTMLFormElement);
-    const priceValues = priceFormData.getAll("price_range");
-    // eslint-disable-next-line no-console
-    console.log("price hidden inputs", Array.from(document.querySelectorAll('input[name="price_range"]')).map((input) => (input as HTMLInputElement).value));
-    // eslint-disable-next-line no-console
-    console.log("price form data", priceValues);
+  const priceFormData = new FormData(form as HTMLFormElement);
+  const priceValues = priceFormData.getAll("price_range");
     expect(priceValues).toContain("USD:250:");
   });
 

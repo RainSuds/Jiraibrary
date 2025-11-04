@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type HierarchicalChildOption = {
   value: string;
@@ -50,9 +50,7 @@ export default function FilterHierarchicalDropdown({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [expandedParents, setExpandedParents] = useState(() => {
-    return new Set<string>(parents.map((parent) => parent.value));
-  });
+  const [collapsedParents, setCollapsedParents] = useState<Set<string>>(new Set());
 
   const parentMap = useMemo(() => {
     const map = new Map<string, HierarchicalParentOption>();
@@ -105,36 +103,37 @@ export default function FilterHierarchicalDropdown({
     return results;
   }, [parents, normalizedSearch]);
 
+  const parentValues = useMemo(() => new Set(parents.map((parent) => parent.value)), [parents]);
+
+  const normalizedCollapsedParents = useMemo(() => {
+    const next = new Set<string>();
+    for (const value of collapsedParents) {
+      if (parentValues.has(value)) {
+        next.add(value);
+      }
+    }
+    return next;
+  }, [collapsedParents, parentValues]);
+
+  const closeDropdown = useCallback(() => {
+    setOpen(false);
+    setSearch("");
+  }, []);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (!containerRef.current) {
         return;
       }
       if (!containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
+        closeDropdown();
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, []);
-
-  useEffect(() => {
-    if (!open) {
-      setSearch("");
-    }
-  }, [open]);
-
-  useEffect(() => {
-    setExpandedParents((prev) => {
-      const next = new Set(prev);
-      for (const parent of parents) {
-        next.add(parent.value);
-      }
-      return next;
-    });
-  }, [parents]);
+  }, [closeDropdown]);
 
   const handleToggleParent = (value: string) => {
     onToggleParent(value);
@@ -206,17 +205,25 @@ export default function FilterHierarchicalDropdown({
     }
   };
 
-  const toggleExpanded = (value: string) => {
-    setExpandedParents((prev) => {
-      const next = new Set(prev);
-      if (next.has(value)) {
-        next.delete(value);
-      } else {
-        next.add(value);
-      }
-      return next;
-    });
-  };
+  const toggleExpanded = useCallback(
+    (value: string) => {
+      setCollapsedParents((prev) => {
+        const next = new Set<string>();
+        for (const entry of prev) {
+          if (parentValues.has(entry)) {
+            next.add(entry);
+          }
+        }
+        if (next.has(value)) {
+          next.delete(value);
+        } else {
+          next.add(value);
+        }
+        return next;
+      });
+    },
+    [parentValues]
+  );
 
   return (
     <div ref={containerRef} className="relative w-full">
@@ -292,10 +299,16 @@ export default function FilterHierarchicalDropdown({
           className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-rose-200 text-sm text-rose-500 transition hover:border-rose-300 hover:text-rose-700"
           onClick={(event) => {
             event.stopPropagation();
-            setOpen((prev) => !prev);
-            if (!open && inputRef.current) {
-              inputRef.current.focus();
-            }
+            setOpen((prev) => {
+              if (prev) {
+                setSearch("");
+                return false;
+              }
+              if (inputRef.current) {
+                inputRef.current.focus();
+              }
+              return true;
+            });
           }}
         >
           {open ? "−" : "+"}
@@ -314,7 +327,8 @@ export default function FilterHierarchicalDropdown({
               </div>
               {filteredParents.map((parent) => {
                 const isParentSelected = selectedParents.includes(parent.value);
-                const isExpanded = expandedParents.has(parent.value) || normalizedSearch.length > 0;
+                const isExpanded =
+                  normalizedSearch.length > 0 || !normalizedCollapsedParents.has(parent.value);
                 return (
                   <div key={parent.value} className="flex flex-col">
                     <div className="flex items-stretch justify-between gap-1 px-4 py-3">

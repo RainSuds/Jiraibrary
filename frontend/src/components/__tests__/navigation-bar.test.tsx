@@ -21,9 +21,9 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+/* eslint-disable @next/next/no-img-element */
 vi.mock("next/image", () => ({
-  default: ({ alt, fill, ...props }: { alt: string; fill?: boolean } & Record<string, unknown>) => (
-    // eslint-disable-next-line jsx-a11y/alt-text
+  default: ({ alt, fill: _fill, ...props }: { alt: string; fill?: boolean } & Record<string, unknown>) => (
     <img alt={alt} {...props} />
   ),
 }));

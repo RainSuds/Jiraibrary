@@ -203,7 +203,7 @@ function serializePriceRange(
 
   const currency = range.currency || fallbackCurrency;
 
-  let resolvedMin = range.min !== null ? clampPrice(range.min, metadata) : null;
+  const resolvedMin = range.min !== null ? clampPrice(range.min, metadata) : null;
   let resolvedMax = range.max !== null ? clampPrice(range.max, metadata) : null;
 
   if (resolvedMin !== null && resolvedMax !== null && resolvedMax < resolvedMin) {
@@ -463,56 +463,62 @@ export default function FilterPanel({ filters, selected, query }: FilterPanelPro
   );
 
   useEffect(() => {
-    setReleaseYearRanges(() => {
-      if (selected.release_year_ranges.length > 0) {
-        return selected.release_year_ranges.map((range) => ({
-          id: range.value_key || createRangeId(),
-          min: typeof range.min === "number" ? `${range.min}` : "",
-          max: typeof range.max === "number" ? `${range.max}` : "",
-        }));
-      }
-      return [
-        {
-          id: createRangeId(),
-          min: "",
-          max: "",
-        },
-      ];
-    });
-  }, [selected.release_year_ranges, releaseYearBounds.min, releaseYearBounds.max]);
-
-  useEffect(() => {
-    setPriceRanges(() => {
-      if (selected.price_ranges.length > 0) {
-        return selected.price_ranges.map((range) => ({
-          id: range.value_key || createRangeId(),
-          currency: range.currency ?? preferredCurrency,
-          min: typeof range.min === "number" ? range.min : null,
-          max: typeof range.max === "number" ? range.max : null,
-        }));
-      }
-      return [
-        {
-          id: createRangeId(),
-          currency: preferredCurrency,
-          min: null,
-          max: null,
-        },
-      ];
-    });
-  }, [selected.price_ranges, preferredCurrency]);
-
-  useEffect(() => {
-    setMeasurementValues((previous) => {
-      const next = computeMeasurementValues();
-      for (const key of Object.keys(next) as MeasurementParamName[]) {
-        if (previous[key] !== next[key]) {
-          return next;
+    startTransition(() => {
+      setReleaseYearRanges(() => {
+        if (selected.release_year_ranges.length > 0) {
+          return selected.release_year_ranges.map((range) => ({
+            id: range.value_key || createRangeId(),
+            min: typeof range.min === "number" ? `${range.min}` : "",
+            max: typeof range.max === "number" ? `${range.max}` : "",
+          }));
         }
-      }
-      return previous;
+        return [
+          {
+            id: createRangeId(),
+            min: "",
+            max: "",
+          },
+        ];
+      });
     });
-  }, [computeMeasurementValues]);
+  }, [selected.release_year_ranges, releaseYearBounds.min, releaseYearBounds.max, startTransition]);
+
+  useEffect(() => {
+    startTransition(() => {
+      setPriceRanges(() => {
+        if (selected.price_ranges.length > 0) {
+          return selected.price_ranges.map((range) => ({
+            id: range.value_key || createRangeId(),
+            currency: range.currency ?? preferredCurrency,
+            min: typeof range.min === "number" ? range.min : null,
+            max: typeof range.max === "number" ? range.max : null,
+          }));
+        }
+        return [
+          {
+            id: createRangeId(),
+            currency: preferredCurrency,
+            min: null,
+            max: null,
+          },
+        ];
+      });
+    });
+  }, [selected.price_ranges, preferredCurrency, startTransition]);
+
+  useEffect(() => {
+    startTransition(() => {
+      setMeasurementValues((previous) => {
+        const next = computeMeasurementValues();
+        for (const key of Object.keys(next) as MeasurementParamName[]) {
+          if (previous[key] !== next[key]) {
+            return next;
+          }
+        }
+        return previous;
+      });
+    });
+  }, [computeMeasurementValues, startTransition]);
 
   const toggleMultiValue = (
     param: string,

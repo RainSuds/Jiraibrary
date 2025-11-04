@@ -56,7 +56,7 @@ function formatPrice(price: PriceSummary | undefined | null): string | null {
       currency: price.currency,
       maximumFractionDigits: 0,
     }).format(amount);
-  } catch (error) {
+  } catch {
     return `${price.amount} ${price.currency}`;
   }
 }
@@ -177,7 +177,7 @@ export default async function ItemDetail({ params }: ItemDetailPageProps) {
   let item: ItemDetailPayload;
   try {
     item = await getItemDetail(resolvedParams.slug);
-  } catch (error) {
+  } catch {
     notFound();
   }
 
