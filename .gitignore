@@ -5,6 +5,6 @@ __pycache__/
 media/
 .DS_Store
 .copilot_instructions.md
-.env
+.env.local
 *.py[co]
 *.sqlite3
