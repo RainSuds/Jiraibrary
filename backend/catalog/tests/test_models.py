@@ -90,14 +90,14 @@ class ImageUploadPathTests(TestCase):
 
         path = models.image_upload_to(image, "sample.JPG")
 
-        self.assertEqual(path, "media/catalog/baby-stars/sugar-jsk/baby-stars_sugar-jsk_001.jpg")
+        self.assertEqual(path, "catalog/baby-stars/sugar-jsk/baby-stars_sugar-jsk_001.jpg")
 
     def test_brand_image_path_falls_back_to_type(self) -> None:
         image = models.Image(brand=self.brand, type=models.Image.ImageType.BRAND_LOGO)
 
         path = models.image_upload_to(image, "logo.PNG")
 
-        self.assertEqual(path, "media/catalog/baby-stars/brand-logo/baby-stars_brand-logo_001.png")
+        self.assertEqual(path, "catalog/baby-stars/brand-logo/baby-stars_brand-logo_001.png")
 
     def test_sequence_increments_with_existing_images(self) -> None:
         models.Image.objects.create(
@@ -109,7 +109,7 @@ class ImageUploadPathTests(TestCase):
 
         path = models.image_upload_to(image, "another.jpg")
 
-        self.assertEqual(path, "media/catalog/baby-stars/sugar-jsk/baby-stars_sugar-jsk_002.jpg")
+        self.assertEqual(path, "catalog/baby-stars/sugar-jsk/baby-stars_sugar-jsk_002.jpg")
 
     @override_settings(MEDIA_URL="https://cdn.jiraibrary.test/media/")
     def test_media_url_resolves_relative_storage_path(self) -> None:

@@ -569,8 +569,7 @@ def image_upload_to(instance: Any, filename: str) -> str:
         item_slug = slug_or_blank(str(instance.type).replace("_", " "))
     item_slug = item_slug or "misc"
 
-    media_prefix = getattr(settings, "AWS_S3_MEDIA_LOCATION", "").strip("/")
-    folder_parts = ([media_prefix] if media_prefix else []) + ["catalog", brand_slug, item_slug]
+    folder_parts = ["catalog", brand_slug, item_slug]
 
     filename_root_parts = [part for part in (brand_slug, item_slug) if part]
     filename_root = "_".join(filename_root_parts) or "image"
@@ -628,9 +627,13 @@ class Image(TimeStampedUUIDModel):
         super().save(*args, **kwargs)
         if self.image_file:
             stored_value = self.image_file.name
-            if stored_value and self.storage_path != stored_value:
-                type(self).objects.filter(pk=self.pk).update(storage_path=stored_value)
-                self.storage_path = stored_value
+            if stored_value:
+                storage_location = getattr(settings, "AWS_S3_MEDIA_LOCATION", "").strip("/")
+                if storage_location and not stored_value.startswith(f"{storage_location}/"):
+                    stored_value = f"{storage_location}/{stored_value.lstrip('/')}"
+                if self.storage_path != stored_value:
+                    type(self).objects.filter(pk=self.pk).update(storage_path=stored_value)
+                    self.storage_path = stored_value
 
     @property
     def media_url(self) -> str:
