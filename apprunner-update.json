@@ -1,0 +1,39 @@
+{
+  "ServiceArn": "arn:aws:apprunner:us-east-2:789924422625:service/jiraibrary-backend/e12eb0893d8a4d60bd9f3879c4bbfe96",
+  "SourceConfiguration": {
+    "ImageRepository": {
+      "ImageIdentifier": "789924422625.dkr.ecr.us-east-2.amazonaws.com/jiraibrary-backend:latest",
+      "ImageRepositoryType": "ECR",
+      "ImageConfiguration": {
+        "Port": "8000",
+        "RuntimeEnvironmentSecrets": {
+          "DEBUG": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:DEBUG::",
+          "SECRET_KEY": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:SECRET_KEY::",
+          "GOOGLE_CLIENT_ID": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:GOOGLE_CLIENT_ID::",
+          "GOOGLE_CLIENT_SECRET": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:GOOGLE_CLIENT_SECRET::",
+          "DATABASE_URL": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:DATABASE_URL::",
+          "AWS_ACCESS_KEY_ID": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:AWS_ACCESS_KEY_ID::",
+          "AWS_SECRET_ACCESS_KEY": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:AWS_SECRET_ACCESS_KEY::",
+          "ALLOWED_HOSTS": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:ALLOWED_HOSTS::"
+        }
+      }
+    },
+    "AuthenticationConfiguration": {
+      "AccessRoleArn": "arn:aws:iam::789924422625:role/jiraibrary-backend-role"
+    },
+    "AutoDeploymentsEnabled": true
+  },
+  "InstanceConfiguration": {
+    "Cpu": "1024",
+    "Memory": "2048",
+    "InstanceRoleArn": "arn:aws:iam::789924422625:role/app-runner-backend-role"
+  },
+  "HealthCheckConfiguration": {
+    "Protocol": "HTTP",
+    "Path": "/health-check",
+    "Interval": 10,
+    "Timeout": 5,
+    "HealthyThreshold": 1,
+    "UnhealthyThreshold": 5
+  }
+}

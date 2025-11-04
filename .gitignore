@@ -20,3 +20,5 @@ node_modules/*
 *.py[co]
 *.sqlite3
 !*.env.example
+secret-update.json
+backend-secret.json

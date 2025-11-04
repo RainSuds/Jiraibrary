@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.routers import DefaultRouter
@@ -45,8 +46,13 @@ router.register(r"item-favorites", ItemFavoriteViewSet, basename="item-favorite"
 router.register(r"item-submissions", ItemSubmissionViewSet, basename="item-submission")
 
 
+def health_check(_request):
+    return JsonResponse({"status": "ok"})
+
+
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("health-check", health_check, name="health-check"),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(
         "api/docs/",
