@@ -1,5 +1,19 @@
 """Django settings for the Jiraibrary backend."""
+
 from __future__ import annotations
+import urllib.parse
+secret_arn = os.getenv("DATABASE_SECRET_ARN")
+region = os.getenv("AWS_REGION", "us-east-2")
+
+if secret_arn:
+    sm = boto3.client("secretsmanager", region_name=region)
+    secret_value = json.loads(sm.get_secret_value(SecretId=secret_arn)["SecretString"])
+    user = secret_value["username"]
+    password = urllib.parse.quote_plus(secret_value["password"])
+    host = secret_value["host"]
+    port = secret_value["port"]
+    db = secret_value["dbname"]
+    os.environ["DATABASE_URL"] = f"postgresql://{user}:{password}@{host}:{port}/{db}"
 
 import os
 from pathlib import Path
@@ -111,64 +125,19 @@ ASGI_APPLICATION = "config.asgi.application"
 
 
 
-# Use AWS Secrets Manager for DB credentials if RDS_SECRET_NAME is set
-def get_db_creds_from_secret():
-    secret_name = os.environ.get("RDS_SECRET_NAME")
-    region_name = os.environ.get("AWS_REGION", "us-east-2")
-    if not secret_name:
-        return None
-    session = boto3.Session()
-    client = session.client(
-        service_name='secretsmanager',
-        region_name=region_name
-    )
-    get_secret_value_response = client.get_secret_value(SecretId=secret_name)
-    secret = json.loads(get_secret_value_response['SecretString'])
-    return secret
 
-_db_secret = get_db_creds_from_secret()
-_db_secret = get_db_creds_from_secret()
-if _db_secret:
-    # Start from DATABASE_URL if present so we have NAME/HOST/PORT defaults.
-    base_db = env.db_url(
+# Build DATABASES from DATABASE_URL, which is set at the top of this file using boto3 and your custom secret
+DATABASES: dict[str, dict[str, Any]] = {
+    "default": env.db_url(
         "DATABASE_URL",
         default="postgres://jiraibrary:jiraibrary@localhost:5432/jiraibrary",  # type: ignore[arg-type]
     )
-
-    # Override sensitive fields from Secrets Manager when available.
-    base_db["USER"] = _db_secret.get("username", base_db.get("USER"))
-    base_db["PASSWORD"] = _db_secret.get("password", base_db.get("PASSWORD"))
-    base_db["NAME"] = _db_secret.get("dbname", base_db.get("NAME"))
-    base_db["HOST"] = _db_secret.get("host", base_db.get("HOST"))
-    base_db["PORT"] = _db_secret.get("port", base_db.get("PORT"))
-
-    base_db.setdefault("OPTIONS", {})
-    base_db["OPTIONS"]["sslmode"] = "require"
-
-    base_db["ATOMIC_REQUESTS"] = True
-    base_db["CONN_MAX_AGE"] = int(os.environ.get("DB_CONN_MAX_AGE", 60))
-    base_db["CONN_HEALTH_CHECKS"] = True
-
-    DATABASES = {"default": base_db}
-else:
-    DATABASES: dict[str, dict[str, Any]] = {
-        "default": env.db_url(
-            "DATABASE_URL",
-            default="postgres://jiraibrary:jiraibrary@localhost:5432/jiraibrary",  # type: ignore[arg-type]
-        )
-    }
-    DATABASES["default"]["ATOMIC_REQUESTS"] = True
-    DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE")
-    DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
-
-    if os.getenv("DATABASE_REQUIRE_SSL") is None:
-        DATABASE_REQUIRE_SSL = not DEBUG
-    else:
-        DATABASE_REQUIRE_SSL = env.bool("DATABASE_REQUIRE_SSL")
-
-    if DATABASE_REQUIRE_SSL:
-        DATABASES["default"].setdefault("OPTIONS", {})
-        DATABASES["default"]["OPTIONS"]["sslmode"] = "require"
+}
+DATABASES["default"]["ATOMIC_REQUESTS"] = True
+DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE")
+DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
+DATABASES["default"].setdefault("OPTIONS", {})
+DATABASES["default"]["OPTIONS"]["sslmode"] = "require"
 
 
 AUTH_USER_MODEL = "users.User"
