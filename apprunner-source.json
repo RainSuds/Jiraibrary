@@ -7,8 +7,9 @@
                 "ALLOWED_HOSTS": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:ALLOWED_HOSTS::",
                 "AWS_ACCESS_KEY_ID": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:AWS_ACCESS_KEY_ID::",
                 "AWS_SECRET_ACCESS_KEY": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:AWS_SECRET_ACCESS_KEY::",
-                "DATABASE_URL": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:DATABASE_URL::",
+                
                 "DEBUG": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:DEBUG::",
+                "DATABASE_URL": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:DATABASE_URL::",
                 "GOOGLE_CLIENT_ID": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:GOOGLE_CLIENT_ID::",
                 "GOOGLE_CLIENT_SECRET": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:GOOGLE_CLIENT_SECRET::",
                 "SECRET_KEY": "arn:aws:secretsmanager:us-east-2:789924422625:secret:prod/backend-k4umAF:SECRET_KEY::"

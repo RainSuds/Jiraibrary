@@ -127,21 +127,29 @@ def get_db_creds_from_secret():
     return secret
 
 _db_secret = get_db_creds_from_secret()
+_db_secret = get_db_creds_from_secret()
 if _db_secret:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': _db_secret['dbname'],
-            'USER': _db_secret['username'],
-            'PASSWORD': _db_secret['password'],
-            'HOST': _db_secret['host'],
-            'PORT': _db_secret['port'],
-            'OPTIONS': {'sslmode': 'require'},
-            'ATOMIC_REQUESTS': True,
-            'CONN_MAX_AGE': int(os.environ.get('DB_CONN_MAX_AGE', 60)),
-            'CONN_HEALTH_CHECKS': True,
-        }
-    }
+    # Start from DATABASE_URL if present so we have NAME/HOST/PORT defaults.
+    base_db = env.db_url(
+        "DATABASE_URL",
+        default="postgres://jiraibrary:jiraibrary@localhost:5432/jiraibrary",  # type: ignore[arg-type]
+    )
+
+    # Override sensitive fields from Secrets Manager when available.
+    base_db["USER"] = _db_secret.get("username", base_db.get("USER"))
+    base_db["PASSWORD"] = _db_secret.get("password", base_db.get("PASSWORD"))
+    base_db["NAME"] = _db_secret.get("dbname", base_db.get("NAME"))
+    base_db["HOST"] = _db_secret.get("host", base_db.get("HOST"))
+    base_db["PORT"] = _db_secret.get("port", base_db.get("PORT"))
+
+    base_db.setdefault("OPTIONS", {})
+    base_db["OPTIONS"]["sslmode"] = "require"
+
+    base_db["ATOMIC_REQUESTS"] = True
+    base_db["CONN_MAX_AGE"] = int(os.environ.get("DB_CONN_MAX_AGE", 60))
+    base_db["CONN_HEALTH_CHECKS"] = True
+
+    DATABASES = {"default": base_db}
 else:
     DATABASES: dict[str, dict[str, Any]] = {
         "default": env.db_url(
