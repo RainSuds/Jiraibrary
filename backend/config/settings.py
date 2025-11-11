@@ -9,6 +9,10 @@ import environ
 from django.core.exceptions import ImproperlyConfigured
 from django.core.management.utils import get_random_secret_key
 
+
+import json
+import boto3
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -106,19 +110,57 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
 
-DATABASES: dict[str, dict[str, Any]] = {
-    "default": env.db_url(
-        "DATABASE_URL",
-        default="postgres://jiraibrary:jiraibrary@localhost:5432/jiraibrary",  # type: ignore[arg-type]
-    )
-}
-DATABASES["default"]["ATOMIC_REQUESTS"] = True
-DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE")
-DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 
-if env.bool("DATABASE_REQUIRE_SSL"):
-    DATABASES["default"].setdefault("OPTIONS", {})
-    DATABASES["default"]["OPTIONS"]["sslmode"] = "require"
+# Use AWS Secrets Manager for DB credentials if RDS_SECRET_NAME is set
+def get_db_creds_from_secret():
+    secret_name = os.environ.get("RDS_SECRET_NAME")
+    region_name = os.environ.get("AWS_REGION", "us-east-2")
+    if not secret_name:
+        return None
+    session = boto3.Session()
+    client = session.client(
+        service_name='secretsmanager',
+        region_name=region_name
+    )
+    get_secret_value_response = client.get_secret_value(SecretId=secret_name)
+    secret = json.loads(get_secret_value_response['SecretString'])
+    return secret
+
+_db_secret = get_db_creds_from_secret()
+if _db_secret:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': _db_secret['dbname'],
+            'USER': _db_secret['username'],
+            'PASSWORD': _db_secret['password'],
+            'HOST': _db_secret['host'],
+            'PORT': _db_secret['port'],
+            'OPTIONS': {'sslmode': 'require'},
+            'ATOMIC_REQUESTS': True,
+            'CONN_MAX_AGE': int(os.environ.get('DB_CONN_MAX_AGE', 60)),
+            'CONN_HEALTH_CHECKS': True,
+        }
+    }
+else:
+    DATABASES: dict[str, dict[str, Any]] = {
+        "default": env.db_url(
+            "DATABASE_URL",
+            default="postgres://jiraibrary:jiraibrary@localhost:5432/jiraibrary",  # type: ignore[arg-type]
+        )
+    }
+    DATABASES["default"]["ATOMIC_REQUESTS"] = True
+    DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE")
+    DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
+
+    if os.getenv("DATABASE_REQUIRE_SSL") is None:
+        DATABASE_REQUIRE_SSL = not DEBUG
+    else:
+        DATABASE_REQUIRE_SSL = env.bool("DATABASE_REQUIRE_SSL")
+
+    if DATABASE_REQUIRE_SSL:
+        DATABASES["default"].setdefault("OPTIONS", {})
+        DATABASES["default"]["OPTIONS"]["sslmode"] = "require"
 
 
 AUTH_USER_MODEL = "users.User"
