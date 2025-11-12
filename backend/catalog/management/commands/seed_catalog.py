@@ -192,7 +192,7 @@ BRAND_SEED: Dict[str, Dict[str, Any]] = {
 
 BRAND_TAXONOMY_SEED: Dict[str, Dict[str, Any]] = {
     "acdc-rag": {
-        "styles": ["jirai-kei", "tenshi-kaiwai"],
+        "styles": ["jirai-kei", "tenshi-kaiwai", "visual-kei"],
         "primary_style": "jirai-kei",
         "substyles": ["jersey", "subcul"],
     },
@@ -245,6 +245,7 @@ def seed_catalog() -> None:
         _sync_brand_taxonomy(brands=brands, styles=styles, substyles=substyles)
         colors = _create_colors()
         fabrics = _create_fabrics()
+        tags = _create_tags()
         features = _create_features()
         collections = _create_collections(brands)
         _create_items(
@@ -256,6 +257,7 @@ def seed_catalog() -> None:
             substyles=substyles,
             colors=colors,
             fabrics=fabrics,
+            tags=tags,
             features=features,
             collections=collections,
         )
@@ -435,6 +437,7 @@ def _create_colors() -> dict[str, models.Color]:
     data = {
         "pink": {"name": "Pink", "hex_code": "#ffc0cb"},
         "sax": {"name": "Sax", "hex_code": "#9cd0ff"},
+        "black": {"name": "Black", "hex_code": "#000000"},
     }
     colors: dict[str, models.Color] = {}
     for slug, attrs in data.items():
@@ -452,6 +455,7 @@ def _create_fabrics() -> dict[str, models.Fabric]:
     data = {
         "cotton": {"name": "Cotton"},
         "chiffon": {"name": "Chiffon"},
+        "polyester": {"name": "Polyester"},
     }
     fabrics: dict[str, models.Fabric] = {}
     for key, attrs in data.items():
@@ -463,6 +467,47 @@ def _create_fabrics() -> dict[str, models.Fabric]:
     return fabrics
 
 
+def _create_tags() -> dict[str, models.Tag]:
+    data = {
+        "solid": {
+            "name": "Solid",
+            "description": "Indicates a piece is a solid color without any prints or patterns.",
+            "type": models.Tag.TagType.DETAIL,
+        },
+        "print": {
+            "name": "Print",
+            "description": "Highlights that the piece features printed artwork or patterned motifs.",
+            "type": models.Tag.TagType.DETAIL,
+        },
+    }
+    tags: dict[str, models.Tag] = {}
+    for slug, attrs in data.items():
+        tag, created = models.Tag.objects.get_or_create(
+            slug=slug,
+            defaults={
+                "name": attrs["name"],
+                "description": attrs["description"],
+                "type": attrs["type"],
+                "is_featured": False,
+            },
+        )
+        if not created:
+            update_fields: list[str] = []
+            if tag.name != attrs["name"]:
+                tag.name = attrs["name"]
+                update_fields.append("name")
+            if tag.description != attrs["description"]:
+                tag.description = attrs["description"]
+                update_fields.append("description")
+            if tag.type != attrs["type"]:
+                tag.type = attrs["type"]
+                update_fields.append("type")
+            if update_fields:
+                tag.save(update_fields=update_fields)
+        tags[slug] = tag
+    return tags
+
+
 def _create_features() -> dict[str, models.Feature]:
     data = {
         "bow": {
@@ -472,6 +517,34 @@ def _create_features() -> dict[str, models.Feature]:
         "lace": {
             "name": "Lace Trim",
             "category": models.Feature.FeatureCategory.TRIM,
+        },
+        "detachable-sleeves": {
+            "name": "Detachable Sleeves",
+            "category": models.Feature.FeatureCategory.CONSTRUCTION,
+        },
+        "short-sleeves": {
+            "name": "Short Sleeves",
+            "category": models.Feature.FeatureCategory.CONSTRUCTION,
+        },
+        "zipper-detail": {
+            "name": "Zipper Detail",
+            "category": models.Feature.FeatureCategory.ATTACHMENT,
+        },
+        "button-front": {
+            "name": "Button Front",
+            "category": models.Feature.FeatureCategory.ATTACHMENT,
+        },
+        "print-graphic": {
+            "name": "Graphic Print",
+            "category": models.Feature.FeatureCategory.TRIM,
+        },
+        "back-vent": {
+            "name": "Back Vent",
+            "category": models.Feature.FeatureCategory.CONSTRUCTION,
+        },
+        "tuxedo-collar": {
+            "name": "Tuxedo Collar",
+            "category": models.Feature.FeatureCategory.CONSTRUCTION,
         },
     }
     features: dict[str, models.Feature] = {}
@@ -490,6 +563,9 @@ def _create_features() -> dict[str, models.Feature]:
 
 def _create_collections(brands: dict[str, models.Brand]) -> dict[str, models.Collection]:
     data = {
+        "acdc-rag": [
+            {"name": "PUNK Revival 2nd", "season": models.Collection.Season.SPRING, "year": 2025},
+        ],
         "liz-lisa": [
             {"name": "Sewing Bear Set-Up", "season": models.Collection.Season.WINTER, "year": 2025},
         ],
@@ -627,6 +703,7 @@ def _create_items(
     substyles: dict[str, models.Substyle],
     colors: dict[str, models.Color],
     fabrics: dict[str, models.Fabric],
+    tags: dict[str, models.Tag],
     features: dict[str, models.Feature],
     collections: dict[str, models.Collection],
 ) -> None:
@@ -657,6 +734,7 @@ def _create_items(
         substyles=[substyles["sweet"]],
         price_currency=currencies["JPY"],
         price_amount=Decimal("28600"),
+        tags=[tags["print"]],
     )
 
     rojita = models.Item.objects.update_or_create(
@@ -686,6 +764,7 @@ def _create_items(
         substyles=[substyles["classic"]],
         price_currency=currencies["JPY"],
         price_amount=Decimal("31200"),
+        tags=[tags["solid"]],
     )
 
 
@@ -700,6 +779,7 @@ def _add_item_details(
     substyles: list[models.Substyle],
     price_currency: models.Currency,
     price_amount: Decimal,
+    tags: list[models.Tag] | None = None,
 ) -> None:
     translation_defaults = {
         "description": "A charming release featuring sugary motifs and ruffled trims.",
@@ -779,3 +859,22 @@ def _add_item_details(
 
     for substyle in substyles:
         models.ItemSubstyle.objects.get_or_create(item=item, substyle=substyle)
+
+    if tags:
+        for index, tag in enumerate(tags):
+            item_tag, created = models.ItemTag.objects.get_or_create(
+                item=item,
+                tag=tag,
+                defaults={
+                    "context": models.ItemTag.TagContext.PRIMARY
+                    if index == 0
+                    else models.ItemTag.TagContext.SECONDARY,
+                },
+            )
+            if not created:
+                desired_context = (
+                    models.ItemTag.TagContext.PRIMARY if index == 0 else models.ItemTag.TagContext.SECONDARY
+                )
+                if item_tag.context != desired_context:
+                    item_tag.context = desired_context
+                    item_tag.save(update_fields=["context"])

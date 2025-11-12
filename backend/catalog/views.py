@@ -6,11 +6,13 @@ from typing import Any, cast
 from django.conf import settings
 from django.db.models import Count, Max, Min, Prefetch, Q, QuerySet
 from rest_framework import mixins, permissions, status, viewsets
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import MethodNotAllowed, PermissionDenied
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.request import Request
 
 from . import filters, models, serializers
+from .permissions import IsCatalogEditor
 
 
 class BrandViewSet(viewsets.ReadOnlyModelViewSet):
@@ -105,11 +107,23 @@ class FeatureViewSet(viewsets.ReadOnlyModelViewSet):
     filterset_fields = ["category", "is_visible"]
 
 
-class ImageViewSet(viewsets.ReadOnlyModelViewSet):
+class ImageViewSet(viewsets.ModelViewSet):
     queryset = models.Image.objects.select_related("item", "brand", "variant").all()
     serializer_class = serializers.ImageSerializer
     filterset_fields = ["item__slug", "brand__slug", "type", "is_cover"]
     search_fields = ["storage_path", "caption"]
+    parser_classes = [MultiPartParser, FormParser]
+    http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
+
+    def get_permissions(self):  # type: ignore[override]
+        if self.action in {"list", "retrieve"}:
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated(), IsCatalogEditor()]
+
+    def get_serializer_class(self):  # type: ignore[override]
+        if self.action in {"create", "update", "partial_update"}:
+            return serializers.ImageUploadSerializer
+        return super().get_serializer_class()
 
 
 class LanguageViewSet(viewsets.ReadOnlyModelViewSet):
@@ -124,7 +138,7 @@ class CurrencyViewSet(viewsets.ReadOnlyModelViewSet):
     lookup_field = "code"
 
 
-class ItemViewSet(viewsets.ReadOnlyModelViewSet):
+class ItemViewSet(viewsets.ModelViewSet):
     queryset = (
         models.Item.objects.select_related(
             "brand",
@@ -189,11 +203,23 @@ class ItemViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = ["slug", "translations__name", "brand__slug"]
     lookup_field = "slug"
     pagination_class = None
+    http_method_names = ["get", "post", "put", "delete", "head", "options"]
+    serializer_class = serializers.ItemSummarySerializer
 
     def get_serializer_class(self):  # type: ignore[override]
+        if self.action in {"create", "update"}:
+            return serializers.ItemWriteSerializer
         if self.action == "retrieve":
             return serializers.ItemDetailSerializer
         return serializers.ItemSummarySerializer
+
+    def get_permissions(self):  # type: ignore[override]
+        if self.action in {"list", "retrieve"}:
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated(), IsCatalogEditor()]
+
+    def partial_update(self, request, *args, **kwargs):  # type: ignore[override]
+        raise MethodNotAllowed("PATCH")
 
     def list(self, request, *args, **kwargs):  # type: ignore[override]
         queryset = self.filter_queryset(self.get_queryset())

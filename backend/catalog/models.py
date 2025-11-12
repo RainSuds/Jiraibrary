@@ -761,12 +761,37 @@ class ItemSubmission(TimeStampedUUIDModel):
         on_delete=models.CASCADE,
         related_name="item_submissions",
     )
+    item_slug = models.SlugField(max_length=255, blank=True)
     title = models.CharField(max_length=255)
     brand_name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    description_translations = models.JSONField(default=list, blank=True)
     reference_url = models.URLField(blank=True)
     image_url = models.URLField(blank=True)
     tags = models.JSONField(default=list, blank=True)
+    name_translations = models.JSONField(default=list, blank=True)
+    release_year = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[
+            MinValueValidator(1900),
+            MaxValueValidator(2100),
+        ],
+    )
+    category_slug = models.SlugField(max_length=128, blank=True)
+    subcategory_slug = models.SlugField(max_length=128, blank=True)
+    style_slugs = models.JSONField(default=list, blank=True)
+    substyle_slugs = models.JSONField(default=list, blank=True)
+    color_slugs = models.JSONField(default=list, blank=True)
+    fabric_breakdown = models.JSONField(default=list, blank=True)
+    feature_slugs = models.JSONField(default=list, blank=True)
+    collection_reference = models.CharField(max_length=255, blank=True)
+    price_amounts = models.JSONField(default=list, blank=True)
+    origin_country = models.CharField(max_length=2, blank=True)
+    production_country = models.CharField(max_length=2, blank=True)
+    limited_edition = models.BooleanField(default=False)
+    has_matching_set = models.BooleanField(default=False)
+    verified_source = models.BooleanField(default=False)
     status = models.CharField(
         max_length=16,
         choices=SubmissionStatus.choices,
