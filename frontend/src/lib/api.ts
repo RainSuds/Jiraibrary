@@ -54,6 +54,23 @@ async function fetchJson<T>(
   return (await response.json()) as T;
 }
 
+async function fetchCollection<T>(path: string, params?: QueryParams): Promise<T[]> {
+  const mergedParams: QueryParams = { page_size: "200", ...params };
+  const data = await fetchJson<unknown>(path, mergedParams, { cache: "no-store" });
+  if (Array.isArray(data)) {
+    return data as T[];
+  }
+  if (
+    data &&
+    typeof data === "object" &&
+    "results" in data &&
+    Array.isArray((data as { results: unknown[] }).results)
+  ) {
+    return (data as { results: T[] }).results;
+  }
+  return [];
+}
+
 export type BrandSummary = {
   slug: string;
   name: string;
@@ -160,6 +177,89 @@ export type TagSummary = {
   id: string;
   name: string;
   type: string;
+};
+
+export type CategorySummary = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+};
+
+export type SubcategorySummary = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  category: CategorySummary | null;
+};
+
+export type TagOptionSummary = {
+  id: string;
+  name: string;
+  type: string;
+  description?: string;
+  is_featured?: boolean;
+};
+
+export type ColorOptionSummary = {
+  id: string;
+  name: string;
+  hex_code: string | null;
+};
+
+export type StyleSummary = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+};
+
+export type SubstyleSummary = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  style: StyleSummary | null;
+};
+
+export type FabricSummary = {
+  id: string;
+  name: string;
+  description: string;
+};
+
+export type FeatureSummary = {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  is_visible: boolean;
+};
+
+export type CollectionSummary = {
+  id: string;
+  name: string;
+  season: string | null;
+  year: number | null;
+  description: string;
+  brand: BrandReference | null;
+};
+
+export type LanguageSummary = {
+  id: string;
+  code: string;
+  name: string;
+  native_name: string;
+  is_supported: boolean;
+};
+
+export type CurrencySummary = {
+  id: string;
+  code: string;
+  name: string;
+  symbol: string | null;
+  is_active: boolean;
 };
 
 export type ImagePreview = {
@@ -349,6 +449,62 @@ export async function getBrandList(): Promise<BrandListResponse> {
   });
 }
 
+export async function listBrandSummaries(): Promise<BrandSummary[]> {
+  return fetchCollection<BrandSummary>("api/brands/", { page_size: "300" });
+}
+
+export async function listCategories(): Promise<CategorySummary[]> {
+  const categories = await fetchCollection<CategorySummary>("api/categories/", { page_size: "300" });
+  return categories.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function listSubcategories(): Promise<SubcategorySummary[]> {
+  return fetchCollection<SubcategorySummary>("api/subcategories/", { page_size: "400" });
+}
+
+export async function listTags(): Promise<TagOptionSummary[]> {
+  const tags = await fetchCollection<TagOptionSummary>("api/tags/", { page_size: "400" });
+  return tags.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function listColors(): Promise<ColorOptionSummary[]> {
+  const colors = await fetchCollection<ColorOptionSummary>("api/colors/", { page_size: "300" });
+  return colors.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function listStyles(): Promise<StyleSummary[]> {
+  const styles = await fetchCollection<StyleSummary>("api/styles/", { page_size: "300" });
+  return styles.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function listSubstyles(): Promise<SubstyleSummary[]> {
+  const substyles = await fetchCollection<SubstyleSummary>("api/substyles/", { page_size: "400" });
+  return substyles.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function listFabrics(): Promise<FabricSummary[]> {
+  const fabrics = await fetchCollection<FabricSummary>("api/fabrics/", { page_size: "300" });
+  return fabrics.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function listFeatures(): Promise<FeatureSummary[]> {
+  const features = await fetchCollection<FeatureSummary>("api/features/", { page_size: "400" });
+  return features.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function listCollections(): Promise<CollectionSummary[]> {
+  const collections = await fetchCollection<CollectionSummary>("api/collections/", { page_size: "400" });
+  return collections;
+}
+
+export async function listLanguages(): Promise<LanguageSummary[]> {
+  return fetchCollection<LanguageSummary>("api/languages/", { page_size: "300" });
+}
+
+export async function listCurrencies(): Promise<CurrencySummary[]> {
+  return fetchCollection<CurrencySummary>("api/currencies/", { page_size: "300" });
+}
+
 export async function getItemList(
   params: Record<string, string | readonly string[] | undefined>
 ): Promise<ItemListResponse> {
@@ -498,15 +654,339 @@ export async function deleteFavorite(token: string, favoriteId: string): Promise
   }
 }
 
+export type ItemMetadataInput = {
+  pattern?: string;
+  sleeve_type?: string;
+  occasion?: string;
+  season?: string;
+  fit?: string;
+  length?: string;
+  lining?: string;
+  closure_type?: string;
+  care_instructions?: string;
+  inspiration?: string;
+  ai_confidence?: number | null;
+};
+
+export type ItemTranslationInput = {
+  language: string;
+  dialect?: string;
+  name: string;
+  description?: string;
+  pattern?: string;
+  fit?: string;
+  length?: string;
+  occasion?: string;
+  season?: string;
+  lining?: string;
+  closure_type?: string;
+  care_instructions?: string;
+  source?: string;
+  quality?: string;
+  auto_translated?: boolean;
+};
+
+export type ItemTagInput = {
+  id: string;
+  tag_context?: "primary" | "secondary";
+  confidence?: number | null;
+};
+
+export type ItemColorInput = {
+  id: string;
+  is_primary?: boolean;
+};
+
+export type ItemSubstyleInput = {
+  id: string;
+  weight?: number | null;
+};
+
+export type ItemFabricInput = {
+  id: string;
+  percentage?: number | null;
+};
+
+export type ItemFeatureInput = {
+  id: string;
+  is_prominent?: boolean;
+  notes?: string;
+};
+
+export type ItemCollectionInput = {
+  id: string;
+  role?: string;
+};
+
+export type ItemPriceInput = {
+  currency: string;
+  amount: number;
+  source?: string;
+  rate_used?: number | null;
+  valid_from?: string | null;
+  valid_to?: string | null;
+};
+
+export type ItemVariantInput = {
+  label: string;
+  sku?: string;
+  color?: string | null;
+  size_descriptor?: string;
+  stock_status?: string;
+  notes?: Record<string, unknown>;
+};
+
+export type ItemMeasurementInput = {
+  variant_label?: string | null;
+  is_one_size?: boolean;
+  bust_cm?: number | null;
+  waist_cm?: number | null;
+  hip_cm?: number | null;
+  length_cm?: number | null;
+  sleeve_length_cm?: number | null;
+  hem_cm?: number | null;
+  heel_height_cm?: number | null;
+  bag_depth_cm?: number | null;
+  fit_notes?: string;
+};
+
+export type ItemImageAssociation = {
+  id: string;
+  type?: string;
+  is_cover?: boolean;
+  caption?: string;
+  variant_label?: string | null;
+};
+
+export type ItemCreatePayload = {
+  slug: string;
+  brand_slug: string;
+  category_id?: string | null;
+  subcategory_id?: string | null;
+  origin_country?: string;
+  default_language?: string;
+  default_currency?: string;
+  release_year?: number | null;
+  release_date?: string | null;
+  collaboration?: string;
+  limited_edition?: boolean;
+  has_matching_set?: boolean;
+  verified_source?: boolean;
+  status?: string;
+  extra_metadata?: Record<string, unknown>;
+  metadata?: ItemMetadataInput | null;
+  translations: ItemTranslationInput[];
+  tags?: ItemTagInput[];
+  colors?: ItemColorInput[];
+  substyles?: ItemSubstyleInput[];
+  fabrics?: ItemFabricInput[];
+  features?: ItemFeatureInput[];
+  collections?: ItemCollectionInput[];
+  prices?: ItemPriceInput[];
+  variants?: ItemVariantInput[];
+  measurements?: ItemMeasurementInput[];
+  images?: ItemImageAssociation[];
+};
+
+export type UploadedImageSummary = {
+  id: string;
+  url: string;
+  type: string;
+  caption: string | null;
+  is_cover: boolean;
+  width: number | null;
+  height: number | null;
+  item?: string | null;
+  brand?: string | null;
+  variant?: string | null;
+  file_size_bytes?: number | null;
+  hash_signature?: string | null;
+  dominant_color?: string | null;
+  source?: string | null;
+  license?: string | null;
+};
+
+export async function createItem(token: string, payload: ItemCreatePayload): Promise<ItemDetail> {
+  const response = await fetch(buildUrl("api/items/"), {
+    method: "POST",
+    headers: buildJsonHeaders(buildAuthHeaders(token)),
+    body: JSON.stringify(payload),
+  });
+  return handleJsonResponse<ItemDetail>(response);
+}
+
+type UploadImageOptions = {
+  type?: string;
+  caption?: string;
+  itemId?: string;
+  brandId?: string;
+  variantId?: string;
+  isCover?: boolean;
+  source?: string;
+  license?: string;
+};
+
+export async function uploadItemImage(
+  token: string,
+  file: File,
+  options?: UploadImageOptions
+): Promise<UploadedImageSummary> {
+  const formData = new FormData();
+  formData.append("image_file", file);
+  if (options?.type) {
+    formData.append("type", options.type);
+  }
+  if (options?.caption) {
+    formData.append("caption", options.caption);
+  }
+  if (options?.itemId) {
+    formData.append("item", options.itemId);
+  }
+  if (options?.brandId) {
+    formData.append("brand", options.brandId);
+  }
+  if (options?.variantId) {
+    formData.append("variant", options.variantId);
+  }
+  if (options?.isCover !== undefined) {
+    formData.append("is_cover", String(options.isCover));
+  }
+  if (options?.source) {
+    formData.append("source", options.source);
+  }
+  if (options?.license) {
+    formData.append("license", options.license);
+  }
+
+  const headers = new Headers();
+  headers.set("Accept", "application/json");
+  headers.set("Authorization", `Token ${token}`);
+
+  const response = await fetch(buildUrl("api/images/"), {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Image upload failed with status ${response.status}`);
+  }
+
+  const payload = (await response.json()) as UploadedImageSummary;
+  return payload;
+}
+
+export async function deleteItemImage(token: string, imageId: string): Promise<void> {
+  const response = await fetch(buildUrl(`api/images/${encodeURIComponent(imageId)}/`), {
+    method: "DELETE",
+    headers: buildAuthHeaders(token),
+  });
+  if (!response.ok && response.status !== 204) {
+    const message = await response.text();
+    throw new Error(message || `Failed to delete image (${response.status})`);
+  }
+}
+
+export type UpdateImagePayload = {
+  type?: string | null;
+  caption?: string | null;
+  is_cover?: boolean;
+  itemId?: string | null;
+  brandId?: string | null;
+  variantId?: string | null;
+  source?: string | null;
+  license?: string | null;
+};
+
+export async function updateItemImage(
+  token: string,
+  imageId: string,
+  payload: UpdateImagePayload
+): Promise<UploadedImageSummary> {
+  const formData = new FormData();
+  if (payload.type !== undefined) {
+    formData.append("type", payload.type ?? "");
+  }
+  if (payload.caption !== undefined) {
+    formData.append("caption", payload.caption ?? "");
+  }
+  if (payload.is_cover !== undefined) {
+    formData.append("is_cover", String(payload.is_cover));
+  }
+  if (payload.itemId !== undefined) {
+    if (payload.itemId) {
+      formData.append("item", payload.itemId);
+    } else {
+      formData.append("item", "");
+    }
+  }
+  if (payload.brandId !== undefined) {
+    if (payload.brandId) {
+      formData.append("brand", payload.brandId);
+    } else {
+      formData.append("brand", "");
+    }
+  }
+  if (payload.variantId !== undefined) {
+    if (payload.variantId) {
+      formData.append("variant", payload.variantId);
+    } else {
+      formData.append("variant", "");
+    }
+  }
+  if (payload.source !== undefined) {
+    formData.append("source", payload.source ?? "");
+  }
+  if (payload.license !== undefined) {
+    formData.append("license", payload.license ?? "");
+  }
+
+  const headers = new Headers();
+  headers.set("Accept", "application/json");
+  headers.set("Authorization", `Token ${token}`);
+
+  const response = await fetch(buildUrl(`api/images/${encodeURIComponent(imageId)}/`), {
+    method: "PATCH",
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Failed to update image (${response.status})`);
+  }
+
+  return (await response.json()) as UploadedImageSummary;
+}
+
 export type ItemSubmissionPayload = {
   id: string;
   user: string;
+  item_slug: string;
   title: string;
+  name_translations: SubmissionNameTranslation[];
+  description_translations: SubmissionDescriptionTranslation[];
   brand_name: string;
   description: string;
   reference_url: string;
   image_url: string;
   tags: string[];
+  release_year: number | null;
+  category_slug: string;
+  subcategory_slug: string;
+  style_slugs: string[];
+  substyle_slugs: string[];
+  color_slugs: string[];
+  fabric_breakdown: SubmissionFabricBreakdown[];
+  feature_slugs: string[];
+  collection_reference: string;
+  price_amounts: SubmissionPriceAmount[];
+  origin_country: string;
+  production_country: string;
+  limited_edition: boolean;
+  has_matching_set: boolean;
+  verified_source: boolean;
   status: string;
   moderator_notes: string | null;
   linked_item: string | null;
@@ -514,13 +994,48 @@ export type ItemSubmissionPayload = {
   updated_at: string;
 };
 
+export type SubmissionNameTranslation = {
+  language: string;
+  value: string;
+};
+
+export type SubmissionDescriptionTranslation = SubmissionNameTranslation;
+
+export type SubmissionFabricBreakdown = {
+  fabric: string;
+  percentage?: string;
+};
+
+export type SubmissionPriceAmount = {
+  currency: string;
+  amount: string;
+};
+
 export type CreateSubmissionPayload = {
   title: string;
+  name_translations?: SubmissionNameTranslation[];
+  description_translations?: SubmissionDescriptionTranslation[];
   brand_name: string;
   description?: string;
   reference_url?: string;
   image_url?: string;
   tags?: string[];
+  item_slug?: string;
+  release_year?: number | null;
+  category_slug?: string | null;
+  subcategory_slug?: string | null;
+  style_slugs?: string[];
+  substyle_slugs?: string[];
+  color_slugs?: string[];
+  fabric_breakdown?: SubmissionFabricBreakdown[];
+  feature_slugs?: string[];
+  collection_reference?: string;
+  price_amounts?: SubmissionPriceAmount[];
+  origin_country?: string;
+  production_country?: string;
+  limited_edition?: boolean;
+  has_matching_set?: boolean;
+  verified_source?: boolean;
 };
 
 export async function createSubmission(

@@ -52,6 +52,7 @@ __pycache__/
 media/
 .DS_Store
 .copilot_instructions.md
+env.ps1
 .env
 .env.local
 .env.production
