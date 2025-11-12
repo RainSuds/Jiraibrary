@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
+import { API_BASE } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -225,7 +226,7 @@ export default function LoginPage() {
               onSuccess={handleGoogleSuccess}
               onError={handleGoogleError}
               useOneTap={false}
-              width="100%"
+              theme="outline"
             />
           </div>
         </div>
@@ -235,8 +236,14 @@ export default function LoginPage() {
           <p>
             Need an account? Switch to the registration form above to get started. Admin panel remains available at
             {" "}
-            <Link href="/admin/" className="font-semibold text-rose-700 hover:text-rose-900">
-              /admin
+            <Link
+              href={`${API_BASE}admin/`}
+              className="font-semibold text-rose-700 hover:text-rose-900"
+              prefetch={false}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Jiraibrary Admin
             </Link>
             .
           </p>
