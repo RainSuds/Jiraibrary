@@ -1,23 +1,73 @@
 """Django settings for the Jiraibrary backend."""
 
 from __future__ import annotations
+import os
+import json
+import boto3
 import urllib.parse
+import logging
+import sys
+from typing import cast
+
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logger = logging.getLogger("settings")
+
 secret_arn = os.getenv("DATABASE_SECRET_ARN")
 region = os.getenv("AWS_REGION", "us-east-2")
 
-if secret_arn:
-    sm = boto3.client("secretsmanager", region_name=region)
-    secret_value = json.loads(sm.get_secret_value(SecretId=secret_arn)["SecretString"])
-    user = secret_value["username"]
-    password = urllib.parse.quote_plus(secret_value["password"])
-    host = secret_value["host"]
-    port = secret_value["port"]
-    db = secret_value["dbname"]
-    os.environ["DATABASE_URL"] = f"postgresql://{user}:{password}@{host}:{port}/{db}"
+logger.info(f"DATABASE_SECRET_ARN: {secret_arn}")
+logger.info(f"AWS_REGION: {region}")
+
+db_username = os.getenv("DB_USERNAME")
+db_password = os.getenv("DB_PASSWORD")
+db_host = os.getenv("DB_HOST")
+db_port = os.getenv("DB_PORT") or "5432"
+db_name = os.getenv("DB_NAME")
+
+def _set_database_url(user: str, password: str, host: str, port: str, db: str) -> None:
+    quoted_password = urllib.parse.quote_plus(password)
+    timeout = os.getenv("DB_CONNECT_TIMEOUT", "10")
+    os.environ["DATABASE_URL"] = (
+        f"postgresql://{user}:{quoted_password}@{host}:{port}/{db}?connect_timeout={timeout}"
+    )
+    logger.info(
+        "Set DATABASE_URL for user '%s' at host '%s:%s' and db '%s' with connect_timeout=%s",
+        user,
+        host,
+        port,
+        db,
+        timeout,
+    )
+
+
+if all([db_username, db_password, db_host, db_name]):
+    _set_database_url(
+        cast(str, db_username),
+        cast(str, db_password),
+        cast(str, db_host),
+        db_port,
+        cast(str, db_name),
+    )
+elif secret_arn:
+    try:
+        sm = boto3.client("secretsmanager", region_name=region)
+        secret_value = json.loads(sm.get_secret_value(SecretId=secret_arn)["SecretString"])
+        logger.info("Fetched secret keys: %s", list(secret_value.keys()))
+        _set_database_url(
+            secret_value["username"],
+            secret_value["password"],
+            secret_value["host"],
+            secret_value.get("port", "5432"),
+            secret_value["dbname"],
+        )
+    except Exception as e:
+        logger.error(f"Failed to fetch or parse DB secret: {e}")
+else:
+    logger.warning("DATABASE_SECRET_ARN not set; will use default/fallback DB config.")
 
 import os
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import environ
 from django.core.exceptions import ImproperlyConfigured
@@ -71,7 +121,26 @@ if not SECRET_KEY:
         SECRET_KEY = get_random_secret_key()
     else:
         raise ImproperlyConfigured("SECRET_KEY must be set. Provide it via environment variables or .env.")
-ALLOWED_HOSTS: list[str] = cast(list[str], env.list("ALLOWED_HOSTS"))
+_raw_allowed_hosts = cast(list[str], env.list("ALLOWED_HOSTS"))
+ALLOWED_HOSTS: list[str] = [host.strip() for host in _raw_allowed_hosts if host.strip()]
+
+# Ensure AWS App Runner health checks reach the app even if ALLOWED_HOSTS is misconfigured.
+for candidate in (
+    os.getenv("APP_RUNNER_DEFAULT_DOMAIN"),
+    os.getenv("APP_RUNNER_SERVICE_URL"),
+    os.getenv("SERVICE_URL"),
+):
+    if not candidate:
+        continue
+    parsed = urllib.parse.urlparse(candidate)
+    host = parsed.netloc or parsed.path
+    if host and host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(host)
+
+if ".awsapprunner.com" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(".awsapprunner.com")
+
+ALLOWED_HOSTS = list(dict.fromkeys(ALLOWED_HOSTS))
 
 
 INSTALLED_APPS = [
@@ -192,7 +261,21 @@ else:
     CORS_ALLOW_ALL_ORIGINS = False
     CORS_ALLOWED_ORIGINS = cast(list[str], env.list("CORS_ALLOWED_ORIGINS"))
 
+# Allow Amplify-hosted frontend and primary domain even if env vars omit them.
+for _origin in (
+    "https://jiraibrary.com",
+    "https://main.d1mvuizi4i2c2s.amplifyapp.com",
+):
+    if _origin not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS.append(_origin)
+
 CSRF_TRUSTED_ORIGINS = cast(list[str], env.list("CSRF_TRUSTED_ORIGINS"))
+for _origin in (
+    "https://jiraibrary.com",
+    "https://main.d1mvuizi4i2c2s.amplifyapp.com",
+):
+    if _origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(_origin)
 
 GOOGLE_OAUTH_CLIENT_IDS: list[str] = cast(
     list[str],
