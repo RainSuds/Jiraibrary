@@ -198,6 +198,7 @@ export default function ImageUploadManager({
         return;
       }
       setError(null);
+      let nextResult: UploadedImageSummary[] | null = null;
       setImages((previous) => {
         const next = [...previous];
         const [moved] = next.splice(sourceIndex, 1);
@@ -206,10 +207,13 @@ export default function ImageUploadManager({
         }
         next.splice(targetIndex, 0, moved);
         const normalized = ensureCover(next);
-        notifyChange(normalized);
-        void persistCover(normalized);
+        nextResult = normalized;
         return normalized;
       });
+      if (nextResult) {
+        notifyChange(nextResult);
+        void persistCover(nextResult);
+      }
     },
     [handleFiles, notifyChange, persistCover]
   );

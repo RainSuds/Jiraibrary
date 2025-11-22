@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 import {
+  ApiError,
   AuthResponse,
   UserProfile,
   getCurrentUser,
@@ -43,7 +44,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         window.localStorage.setItem(STORAGE_KEY, authToken);
       }
     } catch (error) {
-      console.error("Failed to hydrate user", error);
+      if (error instanceof ApiError && error.status === 401) {
+        console.info("Stored session token expired; clearing it.");
+      } else {
+        console.error("Failed to hydrate user", error);
+      }
       setToken(null);
       setUser(null);
       if (typeof window !== "undefined") {

@@ -12,7 +12,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.test import APIClient, APITestCase
 
-from catalog import models
+from catalog import models, serializers
 
 
 User = get_user_model()
@@ -178,3 +178,170 @@ class ImageUploadPermissionTests(APITestCase):
         client.force_authenticate(user=self.other_user)
         delete_response = cast(Response, client.delete(reverse("image-detail", args=[image_id])))
         self.assertEqual(delete_response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class ItemSubmissionSerializerTests(APITestCase):
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(
+            username="submitter",
+            email="submitter@example.com",
+            password="password123",
+        )
+
+    def test_reference_urls_promote_primary_string(self) -> None:
+        serializer = serializers.ItemSubmissionSerializer(
+            data={
+                "title": "Test Dress",
+                "brand_name": "Demo Brand",
+                "reference_url": "https://primary.example.com",
+                "reference_urls": ["https://primary.example.com", "https://secondary.example.com"],
+            }
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        submission = serializer.save(user=self.user)
+        self.assertEqual(
+            submission.reference_urls,
+            ["https://primary.example.com", "https://secondary.example.com"],
+        )
+        self.assertEqual(submission.reference_url, "https://primary.example.com")
+
+    def test_collection_proposal_clears_existing_reference(self) -> None:
+        serializer = serializers.ItemSubmissionSerializer(
+            data={
+                "title": "Test Coat",
+                "brand_name": "Demo Brand",
+                "collection_reference": "existing-id",
+                "collection_proposal": {
+                    "name": "Winter Dream",
+                    "season": "winter",
+                    "year": 2024,
+                    "notes": "Community submitted",
+                    "brand_slug": "demo-brand",
+                },
+            }
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        submission = cast(models.ItemSubmission, serializer.save(user=self.user))
+        proposal = cast(dict[str, Any], submission.collection_proposal)
+        self.assertEqual(proposal["name"], "Winter Dream")
+        self.assertEqual(proposal["year"], 2024)
+        self.assertEqual(submission.collection_reference, "")
+
+    def test_size_measurements_support_metric_and_imperial_inputs(self) -> None:
+        serializer = serializers.ItemSubmissionSerializer(
+            data={
+                "title": "Measured Jacket",
+                "brand_name": "Demo Brand",
+                "size_measurements": [
+                    {
+                        "size_label": "S",
+                        "size_category": "alpha",
+                        "unit_system": "metric",
+                        "bust": "80",
+                        "waist": "67",
+                    },
+                    {
+                        "size_label": "M",
+                        "unit_system": "imperial",
+                        "bust": "32",
+                        "notes": "Runs small",
+                    },
+                ],
+            }
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        submission = cast(models.ItemSubmission, serializer.save(user=self.user))
+        entries = cast(list[dict[str, Any]], submission.size_measurements)
+        self.assertEqual(len(entries), 2)
+        first = entries[0]
+        self.assertEqual(first["size_label"], "S")
+        self.assertAlmostEqual(first["measurements"]["bust_cm"], 80.0)
+        self.assertAlmostEqual(first["measurements"]["bust_in"], 31.5, places=1)
+        second = entries[1]
+        self.assertEqual(second["size_label"], "M")
+        self.assertAlmostEqual(second["measurements"]["bust_cm"], 81.28, places=2)
+        self.assertEqual(second["notes"], "Runs small")
+
+    def test_one_size_entry_is_auto_labeled_and_unique(self) -> None:
+        serializer = serializers.ItemSubmissionSerializer(
+            data={
+                "title": "One Size Dress",
+                "brand_name": "Demo Brand",
+                "size_measurements": [
+                    {
+                        "size_label": "",
+                        "size_category": "one_size",
+                        "unit_system": "metric",
+                        "bust": "90",
+                        "waist": "70",
+                    }
+                ],
+            }
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        submission = cast(models.ItemSubmission, serializer.save(user=self.user))
+        entries = cast(list[dict[str, Any]], submission.size_measurements)
+        self.assertEqual(len(entries), 1)
+        only_entry = entries[0]
+        self.assertEqual(only_entry["size_label"], "One size")
+        self.assertTrue(only_entry["is_one_size"])
+        self.assertAlmostEqual(only_entry["measurements"]["bust_cm"], 90.0)
+
+    def test_multiple_one_size_entries_not_allowed(self) -> None:
+        serializer = serializers.ItemSubmissionSerializer(
+            data={
+                "title": "Conflicting Entry",
+                "brand_name": "Demo Brand",
+                "size_measurements": [
+                    {
+                        "size_label": "One",
+                        "size_category": "one_size",
+                        "unit_system": "metric",
+                        "bust": "80",
+                    },
+                    {
+                        "size_label": "Two",
+                        "size_category": "one_size",
+                        "unit_system": "metric",
+                        "bust": "82",
+                    },
+                ],
+            }
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("size_measurements", serializer.errors)
+
+
+class ItemFavoriteViewSetTests(APITestCase):
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(
+            username="favorites",
+            email="favorites@example.com",
+            password="password123",
+        )
+        self.language = models.Language.objects.create(code="en", name="English")
+        self.currency = models.Currency.objects.create(code="JPY", name="Yen", symbol="¥")
+        self.category = models.Category.objects.create(name="Skirts", slug="skirts")
+        self.brand = models.Brand.objects.create(slug="atelier-pierrot", names={"en": "Atelier Pierrot"})
+        self.item = models.Item.objects.create(
+            slug="sewing-bear-set-up",
+            brand=self.brand,
+            category=self.category,
+            default_language=self.language,
+            default_currency=self.currency,
+            status=models.Item.ItemStatus.PUBLISHED,
+        )
+        models.ItemFavorite.objects.create(user=self.user, item=self.item)
+
+    def test_filter_by_slug_does_not_require_uuid(self) -> None:
+        client = cast(APIClient, self.client)
+        client.force_authenticate(user=self.user)
+        response = cast(
+            Response,
+            client.get(reverse("item-favorite-list"), {"item": self.item.slug}),
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        data = cast(list[dict[str, Any]], response.data)
+        self.assertEqual(len(data), 1)
+        entry = data[0]
+        self.assertEqual(entry["item"], self.item.slug)

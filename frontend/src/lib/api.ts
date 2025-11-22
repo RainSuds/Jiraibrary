@@ -7,6 +7,18 @@ export const API_BASE = (() => {
   return base.endsWith("/") ? base : `${base}/`;
 })();
 
+export class ApiError extends Error {
+  status: number;
+  payload?: unknown;
+
+  constructor(message: string, status: number, payload?: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
 function buildUrl(path: string, params?: QueryParams): string {
   const trimmed = path.replace(/^\/+/, "");
   const url = new URL(trimmed, API_BASE);
@@ -551,13 +563,43 @@ function buildJsonHeaders(init?: HeadersInit): Headers {
   return headers;
 }
 
+function extractErrorMessage(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  if (
+    "detail" in payload &&
+    typeof (payload as { detail: unknown }).detail === "string" &&
+    (payload as { detail: string }).detail.trim().length > 0
+  ) {
+    return (payload as { detail: string }).detail;
+  }
+  if ("message" in payload && typeof (payload as { message: unknown }).message === "string") {
+    return (payload as { message: string }).message;
+  }
+  if (Array.isArray(payload)) {
+    return payload.map((entry) => String(entry)).join("\n");
+  }
+  return undefined;
+}
+
 async function handleJsonResponse<T>(response: Response): Promise<T> {
   if (response.status === 204) {
     return undefined as T;
   }
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(text || `Request failed with status ${response.status}`);
+    let parsed: unknown;
+    if (text) {
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = undefined;
+      }
+    }
+    const extractedMessage = parsed ? extractErrorMessage(parsed) : undefined;
+    const message = extractedMessage || text || `Request failed with status ${response.status}`;
+    throw new ApiError(message, response.status, parsed ?? text);
   }
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }
@@ -970,6 +1012,7 @@ export type ItemSubmissionPayload = {
   brand_name: string;
   description: string;
   reference_url: string;
+  reference_urls: string[];
   image_url: string;
   tags: string[];
   release_year: number | null;
@@ -981,6 +1024,7 @@ export type ItemSubmissionPayload = {
   fabric_breakdown: SubmissionFabricBreakdown[];
   feature_slugs: string[];
   collection_reference: string;
+  collection_proposal: CollectionProposalPayload | Record<string, never>;
   price_amounts: SubmissionPriceAmount[];
   origin_country: string;
   production_country: string;
@@ -992,6 +1036,7 @@ export type ItemSubmissionPayload = {
   linked_item: string | null;
   created_at: string;
   updated_at: string;
+  size_measurements: SubmissionSizeMeasurement[];
 };
 
 export type SubmissionNameTranslation = {
@@ -1011,6 +1056,39 @@ export type SubmissionPriceAmount = {
   amount: string;
 };
 
+export type SubmissionSizeMeasurement = {
+  size_label: string;
+  size_category?: string;
+  unit_system: "metric" | "imperial";
+  is_one_size: boolean;
+  notes?: string;
+  measurements: Record<string, number>;
+};
+
+export type CreateSubmissionSizeMeasurementEntry = {
+  size_label: string;
+  size_category?: string;
+  unit_system: "metric" | "imperial";
+  is_one_size?: boolean;
+  notes?: string;
+  bust?: string | number;
+  waist?: string | number;
+  hip?: string | number;
+  length?: string | number;
+  sleeve_length?: string | number;
+  hem?: string | number;
+  heel_height?: string | number;
+  bag_depth?: string | number;
+};
+
+export type CollectionProposalPayload = {
+  name: string;
+  season?: string;
+  year?: number | null;
+  notes?: string;
+  brand_slug?: string | null;
+};
+
 export type CreateSubmissionPayload = {
   title: string;
   name_translations?: SubmissionNameTranslation[];
@@ -1018,6 +1096,7 @@ export type CreateSubmissionPayload = {
   brand_name: string;
   description?: string;
   reference_url?: string;
+  reference_urls?: string[];
   image_url?: string;
   tags?: string[];
   item_slug?: string;
@@ -1030,12 +1109,14 @@ export type CreateSubmissionPayload = {
   fabric_breakdown?: SubmissionFabricBreakdown[];
   feature_slugs?: string[];
   collection_reference?: string;
+  collection_proposal?: CollectionProposalPayload;
   price_amounts?: SubmissionPriceAmount[];
   origin_country?: string;
   production_country?: string;
   limited_edition?: boolean;
   has_matching_set?: boolean;
   verified_source?: boolean;
+  size_measurements?: CreateSubmissionSizeMeasurementEntry[];
 };
 
 export async function createSubmission(
