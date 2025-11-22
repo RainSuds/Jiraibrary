@@ -341,6 +341,16 @@ class Migration(migrations.Migration):
                 'ordering': ['-created_at'],
             },
         ),
+        migrations.RunSQL(
+            sql=(
+                "ALTER TABLE catalog_itemsubmission "
+                "ADD COLUMN IF NOT EXISTS item_slug varchar(255) NOT NULL DEFAULT '';"
+            ),
+            reverse_sql=(
+                "ALTER TABLE catalog_itemsubmission "
+                "DROP COLUMN IF EXISTS item_slug;"
+            ),
+        ),
         migrations.CreateModel(
             name='ItemVariant',
             fields=[
@@ -400,6 +410,7 @@ class Migration(migrations.Migration):
                 ('dominant_color', models.CharField(blank=True, max_length=7)),
                 ('source', models.CharField(blank=True, max_length=32)),
                 ('license', models.CharField(blank=True, max_length=255)),
+                ('uploaded_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='uploaded_images', to=settings.AUTH_USER_MODEL)),
                 ('brand', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='images', to='catalog.brand')),
                 ('item', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='images', to='catalog.item')),
                 ('variant', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='images', to='catalog.itemvariant')),

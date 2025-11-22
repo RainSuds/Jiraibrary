@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework.request import Request
 
 from . import filters, models, serializers
-from .permissions import IsCatalogEditor
+from .permissions import IsCatalogEditor, IsImageOwnerOrCatalogEditor
 
 
 class BrandViewSet(viewsets.ReadOnlyModelViewSet):
@@ -108,7 +108,7 @@ class FeatureViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class ImageViewSet(viewsets.ModelViewSet):
-    queryset = models.Image.objects.select_related("item", "brand", "variant").all()
+    queryset = models.Image.objects.select_related("item", "brand", "variant", "uploaded_by").all()
     serializer_class = serializers.ImageSerializer
     filterset_fields = ["item__slug", "brand__slug", "type", "is_cover"]
     search_fields = ["storage_path", "caption"]
@@ -118,12 +118,40 @@ class ImageViewSet(viewsets.ModelViewSet):
     def get_permissions(self):  # type: ignore[override]
         if self.action in {"list", "retrieve"}:
             return [permissions.AllowAny()]
+        if self.action == "create":
+            return [permissions.IsAuthenticated()]
+        if self.action in {"update", "partial_update", "destroy"}:
+            return [permissions.IsAuthenticated(), IsImageOwnerOrCatalogEditor()]
         return [permissions.IsAuthenticated(), IsCatalogEditor()]
 
     def get_serializer_class(self):  # type: ignore[override]
         if self.action in {"create", "update", "partial_update"}:
             return serializers.ImageUploadSerializer
         return super().get_serializer_class()
+
+    @staticmethod
+    def _user_is_editor(user: Any) -> bool:
+        return bool(getattr(user, "is_staff", False) or getattr(user, "is_superuser", False))
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        user = getattr(self.request, "user", None)
+        extra_kwargs: dict[str, Any] = {}
+        if user and getattr(user, "is_authenticated", False):
+            extra_kwargs["uploaded_by"] = user
+        if not self._user_is_editor(user):
+            for field in ("item", "brand", "variant"):
+                serializer.validated_data.pop(field, None)
+            extra_kwargs.setdefault("item", None)
+            extra_kwargs.setdefault("brand", None)
+            extra_kwargs.setdefault("variant", None)
+        serializer.save(**extra_kwargs)
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        user = getattr(self.request, "user", None)
+        if not self._user_is_editor(user):
+            for field in ("item", "brand", "variant"):
+                serializer.validated_data.pop(field, None)
+        serializer.save()
 
 
 class LanguageViewSet(viewsets.ReadOnlyModelViewSet):

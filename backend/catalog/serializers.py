@@ -279,6 +279,7 @@ class TagTranslationSerializer(serializers.ModelSerializer):
 
 class ImageSerializer(serializers.ModelSerializer):
     url = serializers.SerializerMethodField()
+    uploaded_by = serializers.UUIDField(source="uploaded_by_id", read_only=True)
 
     class Meta:
         model = models.Image
@@ -301,6 +302,7 @@ class ImageSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "url",
+            "uploaded_by",
         ]
 
     def get_url(self, obj: models.Image) -> str:

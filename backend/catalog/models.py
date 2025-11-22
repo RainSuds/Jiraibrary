@@ -619,6 +619,13 @@ class Image(TimeStampedUUIDModel):
     dominant_color = models.CharField(max_length=7, blank=True)
     source = models.CharField(max_length=32, blank=True)
     license = models.CharField(max_length=255, blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="uploaded_images",
+    )
 
     class Meta:
         ordering = ["-created_at"]
