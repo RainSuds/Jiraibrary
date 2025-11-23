@@ -106,7 +106,7 @@ const filters: Filters = {
           name: "Evening Dress",
           selected: false,
           item_count: 4,
-          type: "Occasion",
+          type: "Silhouette",
         },
       ],
     },
@@ -258,6 +258,24 @@ describe("FilterPanel", () => {
     ]);
   });
 
+  it("applies style and substyle filters", async () => {
+    renderPanel();
+    const user = userEvent.setup();
+
+    await ensureSectionOpen(user, "style-content");
+    await user.click(screen.getByRole("button", { name: /Couture/ }));
+    await flushTransitions();
+    expect(routerReplaceMock.mock.calls).toContainEqual(["/search?style=couture", { scroll: false }]);
+
+    await ensureSectionOpen(user, "style-content");
+    await user.click(screen.getByRole("button", { name: /Haute/ }));
+    await flushTransitions();
+    expect(routerReplaceMock.mock.calls).toContainEqual([
+      "/search?style=couture&substyle=haute",
+      { scroll: false },
+    ]);
+  });
+
   it("renders color swatches and toggles color filters", async () => {
     renderPanel();
     const user = userEvent.setup();
@@ -271,6 +289,50 @@ describe("FilterPanel", () => {
     await user.click(screen.getByRole("button", { name: /Red/ }));
     await flushTransitions();
     expect(routerReplaceMock.mock.calls).toContainEqual(["/search?color=red", { scroll: false }]);
+  });
+
+  it("toggles tag filters", async () => {
+    renderPanel();
+    const user = userEvent.setup();
+
+    await ensureSectionOpen(user, "tags-content");
+    await user.click(screen.getByRole("button", { name: /Lace/ }));
+
+    await flushTransitions();
+    expect(routerReplaceMock.mock.calls).toContainEqual(["/search?tag=lace", { scroll: false }]);
+  });
+
+  it("toggles collection filters", async () => {
+    renderPanel();
+    const user = userEvent.setup();
+
+    await ensureSectionOpen(user, "collections-content");
+    await user.click(screen.getByRole("button", { name: /SS24/ }));
+
+    await flushTransitions();
+    expect(routerReplaceMock.mock.calls).toContainEqual(["/search?collection=ss24", { scroll: false }]);
+  });
+
+  it("toggles fabric filters", async () => {
+    renderPanel();
+    const user = userEvent.setup();
+
+    await ensureSectionOpen(user, "fabrics-content");
+    await user.click(screen.getByRole("button", { name: /Silk/ }));
+
+    await flushTransitions();
+    expect(routerReplaceMock.mock.calls).toContainEqual(["/search?fabric=silk", { scroll: false }]);
+  });
+
+  it("toggles feature filters", async () => {
+    renderPanel();
+    const user = userEvent.setup();
+
+    await ensureSectionOpen(user, "features-content");
+    await user.click(screen.getByRole("button", { name: /Pleats/ }));
+
+    await flushTransitions();
+    expect(routerReplaceMock.mock.calls).toContainEqual(["/search?feature=pleats", { scroll: false }]);
   });
 
   it("updates measurement parameters when inputs change", async () => {

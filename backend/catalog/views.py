@@ -184,6 +184,7 @@ class ItemViewSet(viewsets.ModelViewSet):
             "default_language",
             "default_currency",
             "submitted_by",
+            "submitted_by__profile",
         )
         .prefetch_related(
             "tags",

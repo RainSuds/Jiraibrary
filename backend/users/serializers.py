@@ -5,6 +5,8 @@ from django.contrib.auth import authenticate
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
+from catalog import models as catalog_models
+
 from . import models
 
 
@@ -12,6 +14,8 @@ class UserSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
     role = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
+    preferred_language = serializers.SerializerMethodField()
+    preferred_currency = serializers.SerializerMethodField()
 
     class Meta:
         model = models.User
@@ -23,6 +27,8 @@ class UserSerializer(serializers.ModelSerializer):
             "display_name",
             "role",
             "avatar_url",
+            "preferred_language",
+            "preferred_currency",
         ]
         read_only_fields = fields
 
@@ -46,6 +52,35 @@ class UserSerializer(serializers.ModelSerializer):
         if not profile:
             return None
         return profile.avatar_url or None
+
+    def get_preferred_language(self, obj: models.User) -> str | None:
+        profile = getattr(obj, "profile", None)
+        if not profile or not profile.preferred_languages:
+            return None
+        return profile.preferred_languages[0]
+
+    def get_preferred_currency(self, obj: models.User) -> str | None:
+        profile = getattr(obj, "profile", None)
+        if not profile or not profile.preferred_currency:
+            return None
+        return profile.preferred_currency
+
+
+class UserPreferenceSerializer(serializers.Serializer):
+    preferred_language = serializers.CharField(max_length=10, required=False, allow_blank=True)
+    preferred_currency = serializers.CharField(max_length=3, required=False, allow_blank=True)
+
+    def validate_preferred_language(self, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized and not catalog_models.Language.objects.filter(code__iexact=normalized).exists():
+            raise serializers.ValidationError("Unknown language code.")
+        return normalized
+
+    def validate_preferred_currency(self, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized and not catalog_models.Currency.objects.filter(code__iexact=normalized).exists():
+            raise serializers.ValidationError("Unknown currency code.")
+        return normalized
 
 
 class LoginSerializer(serializers.Serializer):

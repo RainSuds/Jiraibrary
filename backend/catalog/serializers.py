@@ -407,7 +407,6 @@ class ItemTranslationSerializer(serializers.ModelSerializer):
             "pattern",
             "fit",
             "length",
-            "occasion",
             "season",
             "lining",
             "closure_type",
@@ -473,7 +472,6 @@ class ItemMetadataSerializer(serializers.ModelSerializer):
         fields = [
             "pattern",
             "sleeve_type",
-            "occasion",
             "season",
             "fit",
             "length",
@@ -492,6 +490,7 @@ class ItemSummarySerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     brand = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
+    subcategory = serializers.SerializerMethodField()
     primary_price = serializers.SerializerMethodField()
     colors = serializers.SerializerMethodField()
     tags = serializers.SerializerMethodField()
@@ -504,6 +503,7 @@ class ItemSummarySerializer(serializers.ModelSerializer):
             "name",
             "brand",
             "category",
+            "subcategory",
             "release_year",
             "has_matching_set",
             "verified_source",
@@ -528,6 +528,16 @@ class ItemSummarySerializer(serializers.ModelSerializer):
         if not category:
             return None
         return {"id": str(category.pk), "name": category.name}
+
+    def get_subcategory(self, obj: models.Item) -> dict | None:
+        subcategory = getattr(obj, "subcategory", None)
+        if not subcategory:
+            return None
+        return {
+            "id": str(subcategory.pk),
+            "name": subcategory.name,
+            "slug": subcategory.slug,
+        }
 
     def get_primary_price(self, obj: models.Item) -> dict | None:
         prices_manager: Any = getattr(obj, "prices", None)
@@ -608,6 +618,10 @@ class ItemDetailSerializer(ItemSummarySerializer):
     fabrics = serializers.SerializerMethodField()
     features = serializers.SerializerMethodField()
     gallery = serializers.SerializerMethodField()
+    submitted_by = serializers.SerializerMethodField()
+    approved_at = serializers.DateTimeField(required=False, allow_null=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
 
     class Meta(ItemSummarySerializer.Meta):
         fields = ItemSummarySerializer.Meta.fields + [
@@ -626,6 +640,10 @@ class ItemDetailSerializer(ItemSummarySerializer):
             "fabrics",
             "features",
             "gallery",
+            "submitted_by",
+            "approved_at",
+            "created_at",
+            "updated_at",
         ]
 
     def get_default_language(self, obj: models.Item) -> str | None:
@@ -747,6 +765,18 @@ class ItemDetailSerializer(ItemSummarySerializer):
             )
         return results
 
+    def get_submitted_by(self, obj: models.Item) -> dict[str, Any] | None:
+        user = getattr(obj, "submitted_by", None)
+        if not user:
+            return None
+        profile = getattr(user, "profile", None)
+        display_name = getattr(profile, "display_name", None) or user.username
+        return {
+            "id": str(user.id),
+            "username": user.username,
+            "display_name": display_name,
+        }
+
     def get_gallery(self, obj: models.Item) -> list[dict]:
         images_manager: Any = getattr(obj, "images", None)
         if images_manager is None:
@@ -778,7 +808,6 @@ class ItemDetailSerializer(ItemSummarySerializer):
 class ItemMetadataInputSerializer(serializers.Serializer):
     pattern = serializers.CharField(required=False, allow_blank=True)
     sleeve_type = serializers.CharField(required=False, allow_blank=True)
-    occasion = serializers.CharField(required=False, allow_blank=True)
     season = serializers.CharField(required=False, allow_blank=True)
     fit = serializers.CharField(required=False, allow_blank=True)
     length = serializers.CharField(required=False, allow_blank=True)
@@ -797,7 +826,6 @@ class ItemTranslationInputSerializer(serializers.Serializer):
     pattern = serializers.CharField(required=False, allow_blank=True)
     fit = serializers.CharField(required=False, allow_blank=True)
     length = serializers.CharField(required=False, allow_blank=True)
-    occasion = serializers.CharField(required=False, allow_blank=True)
     season = serializers.CharField(required=False, allow_blank=True)
     lining = serializers.CharField(required=False, allow_blank=True)
     closure_type = serializers.CharField(required=False, allow_blank=True)
@@ -1045,7 +1073,6 @@ class ItemWriteSerializer(serializers.Serializer):
                 pattern=entry.get("pattern", ""),
                 fit=entry.get("fit", ""),
                 length=entry.get("length", ""),
-                occasion=entry.get("occasion", ""),
                 season=entry.get("season", ""),
                 lining=entry.get("lining", ""),
                 closure_type=entry.get("closure_type", ""),

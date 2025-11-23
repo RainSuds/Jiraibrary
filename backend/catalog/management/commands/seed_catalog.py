@@ -903,7 +903,6 @@ def _add_item_details(
         "season": "Spring",
         "fit": "Regular",
         "length": "Knee length",
-        "occasion": "Tea party",
     }
     overrides = translation_overrides or {}
     for code, language in languages.items():
@@ -957,7 +956,6 @@ def _add_item_details(
         item=item,
         defaults={
             "season": translation_defaults["season"],
-            "occasion": translation_defaults["occasion"],
             "fit": translation_defaults["fit"],
             "length": translation_defaults["length"],
         },

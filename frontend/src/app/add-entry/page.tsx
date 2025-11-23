@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import ImageUploadManager from "@/components/image-upload-manager";
@@ -10,6 +11,7 @@ import {
   CreateSubmissionPayload,
   type CollectionProposalPayload,
   createSubmission,
+  getSubmissionDetail,
   listBrandSummaries,
   listCategories,
   listSubcategories,
@@ -38,6 +40,8 @@ import {
   type CollectionSummary,
   type CurrencySummary,
   UploadedImageSummary,
+  type ItemSubmissionPayload,
+  saveSubmissionDraft,
 } from "@/lib/api";
 import { COUNTRY_OPTIONS } from "@/lib/countries";
 
@@ -104,11 +108,6 @@ type DraftData = {
   uploadedImages: UploadedImageSummary[];
 };
 
-type DraftState = {
-  version: number;
-  updatedAt: string;
-  data: DraftData;
-};
 
 type PreviewSnapshot = {
   title: string;
@@ -135,7 +134,6 @@ type PreviewSnapshot = {
   images: UploadedImageSummary[];
 };
 
-const DRAFT_STORAGE_KEY = "jiraibrary:add-entry-draft-v1";
 
 type MeasurementFieldKey =
   | "bust"
@@ -294,8 +292,11 @@ function buildItemSlug(brandSlug: string | null, name: string): string | null {
 
 export default function AddEntryPage() {
   const { user, token, loading, refresh } = useAuth();
+  const pageTopRef = useRef<HTMLDivElement | null>(null);
   const [form, setForm] = useState<CreateSubmissionPayload>(initialForm);
   const [pending, setPending] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [uploadedImages, setUploadedImages] = useState<UploadedImageSummary[]>([]);
@@ -357,8 +358,10 @@ export default function AddEntryPage() {
   const [newCollectionNotes, setNewCollectionNotes] = useState("");
   const [previewSnapshot, setPreviewSnapshot] = useState<PreviewSnapshot | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [hasDraft, setHasDraft] = useState(false);
-  const [draftStatus, setDraftStatus] = useState<string | null>(null);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [draftMeta, setDraftMeta] = useState<{ id: string; updatedAt: string | null } | null>(null);
 
   const previewImages = previewSnapshot?.images ?? [];
   const previewHeroImage = previewImages[0] ?? null;
@@ -389,6 +392,29 @@ export default function AddEntryPage() {
         { label: "Production country", value: previewSnapshot.productionCountry || "—" },
       ]
     : [];
+  const draftQueryId = searchParams?.get("draft") ?? null;
+  const draftStatusMessage = useMemo(() => {
+    if (!token) {
+      return "Sign in to save drafts to your dashboard.";
+    }
+    if (draftLoading) {
+      return "Loading draft…";
+    }
+    if (draftError) {
+      return `Unable to load draft: ${draftError}`;
+    }
+    if (draftMeta?.updatedAt) {
+      const timestamp = new Date(draftMeta.updatedAt);
+      if (!Number.isNaN(timestamp.getTime())) {
+        return `Editing draft saved ${timestamp.toLocaleString()}.`;
+      }
+      return "Editing draft.";
+    }
+    if (draftMeta) {
+      return "Editing draft.";
+    }
+    return "Drafts are saved to your submissions dashboard.";
+  }, [token, draftLoading, draftError, draftMeta]);
 
   const languageOptions = useMemo(() => {
     const registry = new Map<string, LanguageSummary>();
@@ -675,31 +701,6 @@ export default function AddEntryPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    try {
-      const stored = window.localStorage.getItem(DRAFT_STORAGE_KEY);
-      if (!stored) {
-        return;
-      }
-      const parsed = JSON.parse(stored) as DraftState;
-      if (!parsed || !parsed.data) {
-        window.localStorage.removeItem(DRAFT_STORAGE_KEY);
-        return;
-      }
-      setHasDraft(true);
-      if (parsed.updatedAt) {
-        const formatted = new Date(parsed.updatedAt).toLocaleString();
-        setDraftStatus(`Draft saved ${formatted}.`);
-      } else {
-        setDraftStatus("Draft available.");
-      }
-    } catch (draftError) {
-      console.error("Failed to load draft metadata", draftError);
-    }
-  }, []);
 
   useEffect(() => {
     if (!isPreviewOpen) {
@@ -919,39 +920,136 @@ export default function AddEntryPage() {
     uploadedImages,
   ]);
 
-  const buildDraftPayload = useCallback((): DraftData => {
+  const buildDraftRequestPayload = useCallback((): CreateSubmissionPayload => {
+    const normalizedNames: SubmissionNameTranslation[] = nameEntries
+      .map((entry) => ({
+        language: (entry.language || defaultLanguageCode).trim().toLowerCase(),
+        value: entry.value.trim(),
+      }))
+      .filter((entry) => entry.value.length > 0);
+
+    const normalizedDescriptions: SubmissionDescriptionTranslation[] = descriptionEntries
+      .map((entry) => ({
+        language: (entry.language || defaultLanguageCode).trim().toLowerCase(),
+        value: entry.value.trim(),
+      }))
+      .filter((entry) => entry.value.length > 0);
+
+    const normalizedFabrics: SubmissionFabricBreakdown[] = fabricEntries
+      .map((entry) => ({
+        fabric: entry.fabric.trim(),
+        percentage: entry.percentage.trim() || undefined,
+      }))
+      .filter((entry) => entry.fabric.length > 0);
+
+    const normalizedPrices: SubmissionPriceAmount[] = priceEntries
+      .map((entry) => ({
+        currency: entry.currency.trim().toUpperCase(),
+        amount: entry.amount.trim(),
+      }))
+      .filter((entry) => entry.currency.length > 0 && entry.amount.length > 0);
+
+    const uniqueReferenceLinks = Array.from(
+      new Set(
+        referenceLinks
+          .map((entry) => entry.value.trim())
+          .filter((entry) => entry.length > 0)
+      )
+    );
+
+    const normalizedSizeEntries = sizeEntries.reduce<CreateSubmissionSizeMeasurementEntry[]>((acc, entry) => {
+      const trimmedLabel = entry.sizeLabel.trim();
+      const trimmedNotes = entry.notes.trim();
+      const measurementPayload: Partial<CreateSubmissionSizeMeasurementEntry> = {};
+      entry.activeFields.forEach((fieldKey) => {
+        const rawValue = entry.measurements[fieldKey];
+        if (rawValue && rawValue.trim()) {
+          measurementPayload[fieldKey] = rawValue.trim();
+        }
+      });
+      const hasContent = trimmedLabel.length > 0 || trimmedNotes.length > 0 || Object.keys(measurementPayload).length > 0;
+      if (!hasContent || !trimmedLabel) {
+        return acc;
+      }
+      acc.push({
+        size_label: trimmedLabel,
+        size_category: entry.sizeCategory || undefined,
+        unit_system: entry.unitSystem,
+        is_one_size: entry.sizeCategory === "one_size" || undefined,
+        notes: trimmedNotes || undefined,
+        ...(measurementPayload as Partial<CreateSubmissionSizeMeasurementEntry>),
+      });
+      return acc;
+    }, []);
+
+    const trimmedReleaseYear = releaseYear.trim();
+    let parsedReleaseYear: number | undefined;
+    if (/^\d{4}$/.test(trimmedReleaseYear)) {
+      const numericYear = Number.parseInt(trimmedReleaseYear, 10);
+      if (!Number.isNaN(numericYear)) {
+        parsedReleaseYear = numericYear;
+      }
+    }
+
+    let collectionProposal: CollectionProposalPayload | undefined;
+    if (collectionMode === "new") {
+      const trimmedCollectionName = newCollectionName.trim();
+      if (trimmedCollectionName) {
+        let proposalYear: number | undefined;
+        const trimmedCollectionYear = newCollectionYear.trim();
+        if (/^\d{4}$/.test(trimmedCollectionYear)) {
+          const numericYear = Number.parseInt(trimmedCollectionYear, 10);
+          if (!Number.isNaN(numericYear)) {
+            proposalYear = numericYear;
+          }
+        }
+        collectionProposal = {
+          name: trimmedCollectionName,
+          season: newCollectionSeason || undefined,
+          year: proposalYear,
+          notes: newCollectionNotes.trim() || undefined,
+          brand_slug: selectedBrand ?? undefined,
+        };
+      }
+    }
+
+    const primaryTitle = normalizedNames[0]?.value ?? form.title ?? "";
+    const derivedSlug = buildItemSlug(selectedBrand, primaryTitle);
+
     return {
-      form,
-      selectedBrand,
-      selectedTags,
-      nameEntries,
-      descriptionEntries,
-      releaseYear,
-      selectedCategory,
-      selectedSubcategory,
-      selectedStyles,
-      selectedSubstyles,
-      selectedColors,
-      fabricEntries,
-      selectedFeatures,
-      selectedCollection,
-      collectionMode,
-      newCollectionName,
-      newCollectionSeason,
-      newCollectionYear,
-      newCollectionNotes,
-      priceEntries,
-      originCountry,
-      productionCountry,
-      limitedEdition,
-      hasMatchingSetFlag,
-      verifiedSource,
-      referenceLinks,
-      sizeEntries,
-      uploadedImages,
+      ...form,
+      title: primaryTitle,
+      brand_name: form.brand_name,
+      brand_slug: selectedBrand ?? form.brand_slug ?? undefined,
+      name_translations: normalizedNames.length > 0 ? normalizedNames : undefined,
+      description: normalizedDescriptions[0]?.value ?? form.description,
+      description_translations: normalizedDescriptions.length > 0 ? normalizedDescriptions : undefined,
+      tags: selectedTags.length > 0 ? selectedTags : undefined,
+      reference_url: uniqueReferenceLinks[0] ?? form.reference_url,
+      reference_urls: uniqueReferenceLinks.length > 0 ? uniqueReferenceLinks : undefined,
+      image_url: uploadedImages[0]?.url ?? form.image_url,
+      item_slug: derivedSlug ?? form.item_slug,
+      release_year: parsedReleaseYear,
+      category_slug: selectedCategory ?? undefined,
+      subcategory_slug: selectedSubcategory ?? undefined,
+      style_slugs: selectedStyles.length > 0 ? selectedStyles : undefined,
+      substyle_slugs: selectedSubstyles.length > 0 ? selectedSubstyles : undefined,
+      color_slugs: selectedColors.length > 0 ? selectedColors : undefined,
+      fabric_breakdown: normalizedFabrics.length > 0 ? normalizedFabrics : undefined,
+      feature_slugs: selectedFeatures.length > 0 ? selectedFeatures : undefined,
+      collection_reference: collectionMode === "existing" ? selectedCollection ?? undefined : undefined,
+      collection_proposal: collectionMode === "new" ? collectionProposal : undefined,
+      price_amounts: normalizedPrices.length > 0 ? normalizedPrices : undefined,
+      origin_country: originCountry.trim().toUpperCase() || undefined,
+      production_country: productionCountry.trim().toUpperCase() || undefined,
+      limited_edition: limitedEdition,
+      has_matching_set: hasMatchingSetFlag,
+      verified_source: verifiedSource,
+      size_measurements: normalizedSizeEntries.length > 0 ? normalizedSizeEntries : undefined,
     };
   }, [
     collectionMode,
+    defaultLanguageCode,
     descriptionEntries,
     fabricEntries,
     form,
@@ -1023,57 +1121,183 @@ export default function AddEntryPage() {
     [defaultLanguageCode]
   );
 
-  const handleSaveDraft = useCallback(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    try {
-      const payload: DraftState = {
-        version: 1,
-        updatedAt: new Date().toISOString(),
-        data: buildDraftPayload(),
+  const mapSubmissionToDraftData = useCallback(
+    (submission: ItemSubmissionPayload): DraftData => {
+      const fallbackLanguageCode =
+        submission.name_translations?.[0]?.language?.toLowerCase() ?? defaultLanguageCode;
+
+      const normalizedNames: NameEntry[] = (submission.name_translations ?? []).map((entry) => ({
+        id: generateEntryId(),
+        language: entry.language?.toLowerCase() ?? fallbackLanguageCode,
+        value: entry.value ?? "",
+      }));
+
+      const normalizedDescriptions: DescriptionEntry[] = (submission.description_translations ?? []).map((entry) => ({
+        id: generateEntryId(),
+        language: entry.language?.toLowerCase() ?? fallbackLanguageCode,
+        value: entry.value ?? "",
+      }));
+
+      const fabricEntriesFromSubmission: FabricEntry[] = (submission.fabric_breakdown ?? []).map((fabric) => ({
+        id: generateEntryId(),
+        fabric: fabric.fabric ?? "",
+        percentage: fabric.percentage ?? "",
+      }));
+
+      const priceEntriesFromSubmission: PriceEntry[] = (submission.price_amounts ?? []).map((price) => ({
+        id: generateEntryId(),
+        currency: price.currency ?? "",
+        amount: price.amount ?? "",
+      }));
+
+      const referenceLinkValues = submission.reference_urls?.length
+        ? submission.reference_urls
+        : submission.reference_url
+        ? [submission.reference_url]
+        : [];
+      const referenceLinkEntriesFromSubmission: ReferenceLinkEntry[] =
+        referenceLinkValues.length > 0
+          ? referenceLinkValues.map((value) => ({ id: generateEntryId(), value }))
+          : [{ id: generateEntryId(), value: "" }];
+
+      const sizeEntriesFromSubmission: SizeEntry[] = (submission.size_measurements ?? []).map((entry) => {
+        const measurements: SizeEntryMeasurements = {};
+        const activeFields: MeasurementFieldKey[] = [];
+        Object.entries(entry.measurements ?? {}).forEach(([key, value]) => {
+          if (MEASUREMENT_LABEL_MAP[key as MeasurementFieldKey]) {
+            const measurementKey = key as MeasurementFieldKey;
+            measurements[measurementKey] = value?.toString() ?? "";
+            activeFields.push(measurementKey);
+          }
+        });
+        const fallbackField = MEASUREMENT_FIELDS[0]?.key;
+        const normalizedActiveFields = activeFields.length > 0 ? activeFields : fallbackField ? [fallbackField] : [];
+        normalizedActiveFields.forEach((field) => {
+          if (!measurements[field]) {
+            measurements[field] = "";
+          }
+        });
+        return {
+          id: generateEntryId(),
+          sizeLabel: entry.size_label ?? "",
+          sizeCategory: entry.size_category ?? (entry.is_one_size ? "one_size" : "alpha"),
+          unitSystem: entry.unit_system,
+          notes: entry.notes ?? "",
+          measurements,
+          activeFields: normalizedActiveFields,
+        };
+      });
+
+      const collectionProposal = submission.collection_proposal ?? null;
+      const baseForm: CreateSubmissionPayload = {
+        ...initialForm,
+        title: submission.title ?? submission.name_translations?.[0]?.value ?? "",
+        brand_name: submission.brand_name ?? "",
+        brand_slug: submission.brand_slug ?? undefined,
+        description: submission.description ?? undefined,
+        tags: submission.tags ?? [],
       };
-      window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(payload));
-      setHasDraft(true);
-      setDraftStatus(`Draft saved ${new Date(payload.updatedAt).toLocaleString()}.`);
-    } catch (draftError) {
-      console.error("Failed to save draft", draftError);
-      setDraftStatus("Unable to save draft. Please try again.");
-    }
-  }, [buildDraftPayload]);
 
-  const handleRestoreDraft = useCallback(() => {
-    if (typeof window === "undefined") {
+      return {
+        form: baseForm,
+        selectedBrand: submission.brand_slug ?? null,
+        selectedTags: submission.tags ?? [],
+        nameEntries: normalizedNames.length > 0 ? normalizedNames : [{ id: generateEntryId(), language: fallbackLanguageCode, value: "" }],
+        descriptionEntries:
+          normalizedDescriptions.length > 0
+            ? normalizedDescriptions
+            : [{ id: generateEntryId(), language: fallbackLanguageCode, value: "" }],
+        releaseYear: submission.release_year ? String(submission.release_year) : "",
+        selectedCategory: submission.category_slug ?? null,
+        selectedSubcategory: submission.subcategory_slug ?? null,
+        selectedStyles: submission.style_slugs ?? [],
+        selectedSubstyles: submission.substyle_slugs ?? [],
+        selectedColors: submission.color_slugs ?? [],
+        fabricEntries:
+          fabricEntriesFromSubmission.length > 0
+            ? fabricEntriesFromSubmission
+            : [{ id: generateEntryId(), fabric: "", percentage: "" }],
+        selectedFeatures: submission.feature_slugs ?? [],
+        selectedCollection: submission.collection_reference ?? null,
+        collectionMode:
+          submission.collection_reference || !collectionProposal?.name ? "existing" : "new",
+        newCollectionName: collectionProposal?.name ?? "",
+        newCollectionSeason: collectionProposal?.season ?? "",
+        newCollectionYear: collectionProposal?.year ? String(collectionProposal.year) : "",
+        newCollectionNotes: collectionProposal?.notes ?? "",
+        priceEntries:
+          priceEntriesFromSubmission.length > 0
+            ? priceEntriesFromSubmission
+            : [{ id: generateEntryId(), currency: "", amount: "" }],
+        originCountry: submission.origin_country ?? "",
+        productionCountry: submission.production_country ?? "",
+        limitedEdition: submission.limited_edition,
+        hasMatchingSetFlag: submission.has_matching_set,
+        verifiedSource: submission.verified_source,
+        referenceLinks: referenceLinkEntriesFromSubmission,
+        sizeEntries: sizeEntriesFromSubmission.length > 0 ? sizeEntriesFromSubmission : [createEmptySizeEntry()],
+        uploadedImages: [],
+      };
+    },
+    [defaultLanguageCode]
+  );
+
+  const handleSaveDraft = useCallback(async () => {
+    if (!token) {
+      setErrorMessage("Sign in to save a draft.");
       return;
     }
-    const stored = window.localStorage.getItem(DRAFT_STORAGE_KEY);
-    if (!stored) {
-      setDraftStatus("No saved draft found.");
-      setHasDraft(false);
-      return;
-    }
+    setDraftSaving(true);
+    setErrorMessage(null);
     try {
-      const parsed = JSON.parse(stored) as DraftState;
-      if (!parsed || !parsed.data) {
-        throw new Error("Draft is missing data.");
-      }
-      applyDraftData(parsed.data);
-      setDraftStatus(`Draft restored ${new Date().toLocaleTimeString()}.`);
-      setHasDraft(true);
+      const payload = buildDraftRequestPayload();
+      const result = await saveSubmissionDraft(token, payload, draftMeta?.id);
+      setDraftMeta({ id: result.id, updatedAt: result.updated_at });
+      await refresh();
+      router.push("/submissions");
     } catch (draftError) {
-      console.error("Failed to restore draft", draftError);
-      setDraftStatus("Unable to restore draft.");
+      setErrorMessage(draftError instanceof Error ? draftError.message : "Unable to save draft.");
+    } finally {
+      setDraftSaving(false);
     }
-  }, [applyDraftData]);
+  }, [token, buildDraftRequestPayload, draftMeta?.id, refresh, router]);
 
-  const handleClearDraft = useCallback(() => {
-    if (typeof window === "undefined") {
+  useEffect(() => {
+    if (errorMessage && pageTopRef.current) {
+      pageTopRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [errorMessage]);
+
+  useEffect(() => {
+    if (!token || !draftQueryId) {
       return;
     }
-    window.localStorage.removeItem(DRAFT_STORAGE_KEY);
-    setHasDraft(false);
-    setDraftStatus("Draft cleared.");
-  }, []);
+    let active = true;
+    setDraftLoading(true);
+    setDraftError(null);
+    (async () => {
+      try {
+        const submission = await getSubmissionDetail(token, draftQueryId);
+        if (!active) {
+          return;
+        }
+        applyDraftData(mapSubmissionToDraftData(submission));
+        setDraftMeta({ id: submission.id, updatedAt: submission.updated_at });
+      } catch (draftLoadError) {
+        if (!active) {
+          return;
+        }
+        setDraftError(draftLoadError instanceof Error ? draftLoadError.message : "Unable to load draft.");
+      } finally {
+        if (active) {
+          setDraftLoading(false);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [token, draftQueryId, applyDraftData, mapSubmissionToDraftData]);
 
   const handlePreviewOpen = useCallback(() => {
     setPreviewSnapshot(buildPreviewSnapshot());
@@ -1682,6 +1906,7 @@ export default function AddEntryPage() {
         ...form,
         title: primaryName.value,
         name_translations: dedupedTranslations,
+        brand_slug: selectedBrand ?? undefined,
         description: primaryDescription?.value ?? form.description?.trim() ?? "",
         description_translations: dedupedDescriptions,
         reference_url: normalizedReferenceLinks[0] ?? undefined,
@@ -1739,13 +1964,9 @@ export default function AddEntryPage() {
       setSizeEntries([createEmptySizeEntry()]);
       setBrandError(null);
       setSizeLabelErrors({});
-      setSuccessMessage("Submission received! We'll review it shortly.");
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem(DRAFT_STORAGE_KEY);
-      }
-      setHasDraft(false);
-      setDraftStatus(null);
       await refresh();
+      router.push("/submissions");
+      return;
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to submit entry.");
     } finally {
@@ -1754,12 +1975,22 @@ export default function AddEntryPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6 lg:px-0">
+    <div ref={pageTopRef} className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6 lg:px-0">
       <section className="rounded-3xl border border-rose-100 bg-white/95 p-8 shadow-lg">
         <h1 className="text-3xl font-semibold text-rose-900">Add a catalog entry</h1>
         <p className="mt-2 text-sm text-rose-500">
           Provide as much detail as possible so curators can review and publish your entry.
         </p>
+        {errorMessage ? (
+          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+            {errorMessage}
+          </div>
+        ) : null}
+        {successMessage ? (
+          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+            {successMessage}
+          </div>
+        ) : null}
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-2 text-sm font-medium text-rose-600">
             <span>
@@ -2649,7 +2880,7 @@ export default function AddEntryPage() {
               ))}
             </div>
           </div>
-          <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-rose-200 bg-white/70 p-4 text-sm text-rose-600 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-rose-200 bg-white/70 p-4 text-sm text-rose-600">
             <div className="flex w-full flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -2661,33 +2892,16 @@ export default function AddEntryPage() {
               <button
                 type="button"
                 onClick={handleSaveDraft}
-                className="inline-flex w-full items-center justify-center rounded-full border border-rose-300 px-4 py-2 text-xs font-semibold text-rose-600 transition hover:border-rose-400 hover:text-rose-700 sm:flex-1"
+                disabled={!token || draftSaving || pending}
+                className="inline-flex w-full items-center justify-center rounded-full border border-rose-300 px-4 py-2 text-xs font-semibold text-rose-600 transition hover:border-rose-400 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-1"
               >
-                Save draft
+                {draftSaving ? "Saving draft…" : "Save draft"}
               </button>
-              {hasDraft ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleRestoreDraft}
-                    className="inline-flex items-center justify-center rounded-full border border-rose-300 px-4 py-1 text-xs font-semibold text-rose-600 transition hover:border-rose-400 hover:text-rose-700"
-                  >
-                    Load draft
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleClearDraft}
-                    className="inline-flex items-center justify-center rounded-full border border-rose-300 px-4 py-1 text-xs font-semibold text-rose-600 transition hover:border-rose-400 hover:text-rose-700"
-                  >
-                    Clear draft
-                  </button>
-                </>
-              ) : null}
             </div>
-            {draftStatus ? <p className="text-xs text-rose-400">{draftStatus}</p> : null}
+            <p className={`text-xs ${draftError ? "text-rose-600" : "text-rose-400"}`}>
+              {draftStatusMessage}
+            </p>
           </div>
-          {errorMessage ? <p className="text-sm text-rose-600">{errorMessage}</p> : null}
-          {successMessage ? <p className="text-sm text-emerald-600">{successMessage}</p> : null}
           <button
             type="submit"
             disabled={pending}

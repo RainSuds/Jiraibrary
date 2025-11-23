@@ -3,14 +3,26 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { FocusEvent, useCallback, useEffect, useRef, useState } from "react";
+import { ChangeEvent, FocusEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
+import {
+  CurrencySummary,
+  LanguageSummary,
+  UpdateUserPreferencesPayload,
+  listCurrencies,
+  listLanguages,
+} from "@/lib/api";
 
 export default function NavigationBar() {
-  const { user, logout, loading } = useAuth();
+  const { user, logout, loading, updatePreferences } = useAuth();
   const [pending, setPending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [preferencePending, setPreferencePending] = useState(false);
+  const [languages, setLanguages] = useState<LanguageSummary[]>([]);
+  const [currencies, setCurrencies] = useState<CurrencySummary[]>([]);
+  const [languageSelection, setLanguageSelection] = useState<string>(user?.preferred_language ?? "en");
+  const [currencySelection, setCurrencySelection] = useState<string>(user?.preferred_currency ?? "USD");
   const router = useRouter();
   const pathname = usePathname();
   const loginHref = pathname && pathname !== "/profile" ? `/login?next=${encodeURIComponent(pathname)}` : "/login";
@@ -59,13 +71,70 @@ export default function NavigationBar() {
     };
   }, []);
 
+  useEffect(() => {
+    setLanguageSelection(user?.preferred_language ?? "en");
+    setCurrencySelection(user?.preferred_currency ?? "USD");
+  }, [user?.preferred_currency, user?.preferred_language]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const hydrateOptions = async () => {
+      try {
+        const [languageResults, currencyResults] = await Promise.all([listLanguages(), listCurrencies()]);
+        if (!cancelled) {
+          setLanguages(languageResults);
+          setCurrencies(currencyResults);
+        }
+      } catch (error) {
+        console.error("Failed to load locale options", error);
+      }
+    };
+    void hydrateOptions();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const applyPreferenceChange = useCallback(
+    async (updates: UpdateUserPreferencesPayload) => {
+      if (!user) {
+        return;
+      }
+      setPreferencePending(true);
+      try {
+        await updatePreferences(updates);
+      } finally {
+        setPreferencePending(false);
+      }
+    },
+    [updatePreferences, user],
+  );
+
+  const handleLanguageChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      const value = event.target.value;
+      setLanguageSelection(value);
+      void applyPreferenceChange({ preferred_language: value });
+    },
+    [applyPreferenceChange],
+  );
+
+  const handleCurrencyChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      const value = event.target.value;
+      setCurrencySelection(value);
+      void applyPreferenceChange({ preferred_currency: value });
+    },
+    [applyPreferenceChange],
+  );
+
   return (
     <header className="border-b border-rose-100/80 bg-white/75 backdrop-blur">
       <nav className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
         <Link href="/" className="text-lg font-semibold tracking-tight text-rose-700">
           Jiraibrary
         </Link>
-        <div className="flex items-center gap-4 text-sm font-medium text-rose-600">
+        <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-rose-600">
           <Link href="/" className="transition hover:text-rose-800">
             Home
           </Link>
@@ -80,6 +149,50 @@ export default function NavigationBar() {
           >
             Admin
           </a>
+          {user ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-rose-500">
+              <label className="sr-only" htmlFor="language-select">
+                Preferred language
+              </label>
+              <select
+                id="language-select"
+                value={languageSelection}
+                onChange={handleLanguageChange}
+                disabled={preferencePending}
+                className="rounded-full border border-rose-200 bg-white px-3 py-1 text-rose-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+              >
+                {languages.length === 0 ? (
+                  <option value="en">English</option>
+                ) : (
+                  languages.map((language) => (
+                    <option key={language.id} value={language.code}>
+                      {language.name}
+                    </option>
+                  ))
+                )}
+              </select>
+              <label className="sr-only" htmlFor="currency-select">
+                Preferred currency
+              </label>
+              <select
+                id="currency-select"
+                value={currencySelection}
+                onChange={handleCurrencyChange}
+                disabled={preferencePending}
+                className="rounded-full border border-rose-200 bg-white px-3 py-1 text-rose-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+              >
+                {currencies.length === 0 ? (
+                  <option value="USD">USD</option>
+                ) : (
+                  currencies.map((currency) => (
+                    <option key={currency.id} value={currency.code}>
+                      {currency.code} {currency.symbol ?? ""}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+          ) : null}
           {user ? (
             <Link href="/add-entry" className="transition hover:text-rose-800">
               Add Entry

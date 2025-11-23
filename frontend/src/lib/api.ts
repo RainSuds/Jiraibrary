@@ -291,6 +291,7 @@ export type ItemSummary = {
   name: string;
   brand: BrandReference | null;
   category: { id: string; name: string } | null;
+  subcategory: { id: string; name: string; slug?: string | null } | null;
   release_year: number | null;
   has_matching_set: boolean;
   verified_source: boolean;
@@ -307,7 +308,6 @@ export type ItemTranslationPayload = {
   pattern: string;
   fit: string;
   length: string;
-  occasion: string;
   season: string;
   lining: string;
   closure_type: string;
@@ -333,7 +333,6 @@ export type ItemVariantPayload = {
 export type ItemMetadataPayload = {
   pattern: string | null;
   sleeve_type: string | null;
-  occasion: string | null;
   season: string | null;
   fit: string | null;
   length: string | null;
@@ -357,6 +356,7 @@ export type ItemSubstyleDetail = {
   id: string;
   name: string;
   slug: string;
+  style: { id: string; name: string; slug: string } | null;
   weight: string | null;
 };
 
@@ -372,6 +372,12 @@ export type ItemFeatureDetail = {
   category: string;
   is_prominent: boolean;
   notes: string;
+};
+
+export type ItemContributorSummary = {
+  id: string;
+  username: string;
+  display_name: string;
 };
 
 export type ItemListResponse = {
@@ -433,6 +439,7 @@ export type ItemDetail = {
   slug: string;
   brand: BrandReference | null;
   category: { id: string; name: string } | null;
+  subcategory: { id: string; name: string; slug?: string | null } | null;
   default_language: string | null;
   default_currency: string | null;
   release_year: number | null;
@@ -440,6 +447,10 @@ export type ItemDetail = {
   status: string;
   limited_edition: boolean;
   has_matching_set: boolean;
+  submitted_by: ItemContributorSummary | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
   metadata: ItemMetadataPayload | null;
   extra_metadata: Record<string, unknown> | null;
   translations: ItemTranslationPayload[];
@@ -542,11 +553,18 @@ export type UserProfile = {
   display_name: string;
   role: UserRole | null;
   avatar_url: string | null;
+  preferred_language: string | null;
+  preferred_currency: string | null;
 };
 
 export type AuthResponse = {
   token: string;
   user: UserProfile;
+};
+
+export type UpdateUserPreferencesPayload = {
+  preferred_language?: string | null;
+  preferred_currency?: string | null;
 };
 
 function buildAuthHeaders(token: string, extra?: HeadersInit): Headers {
@@ -659,6 +677,18 @@ export async function getCurrentUser(token: string): Promise<UserProfile> {
   return handleJsonResponse<UserProfile>(response);
 }
 
+export async function updateUserPreferences(
+  token: string,
+  payload: UpdateUserPreferencesPayload
+): Promise<UserProfile> {
+  const response = await fetch(buildUrl("api/auth/me/"), {
+    method: "PATCH",
+    headers: buildJsonHeaders(buildAuthHeaders(token)),
+    body: JSON.stringify(payload),
+  });
+  return handleJsonResponse<UserProfile>(response);
+}
+
 export type ItemFavorite = {
   id: string;
   item: string;
@@ -699,7 +729,6 @@ export async function deleteFavorite(token: string, favoriteId: string): Promise
 export type ItemMetadataInput = {
   pattern?: string;
   sleeve_type?: string;
-  occasion?: string;
   season?: string;
   fit?: string;
   length?: string;
@@ -718,7 +747,6 @@ export type ItemTranslationInput = {
   pattern?: string;
   fit?: string;
   length?: string;
-  occasion?: string;
   season?: string;
   lining?: string;
   closure_type?: string;
@@ -1010,6 +1038,7 @@ export type ItemSubmissionPayload = {
   name_translations: SubmissionNameTranslation[];
   description_translations: SubmissionDescriptionTranslation[];
   brand_name: string;
+  brand_slug: string | null;
   description: string;
   reference_url: string;
   reference_urls: string[];
@@ -1094,6 +1123,7 @@ export type CreateSubmissionPayload = {
   name_translations?: SubmissionNameTranslation[];
   description_translations?: SubmissionDescriptionTranslation[];
   brand_name: string;
+  brand_slug?: string | null;
   description?: string;
   reference_url?: string;
   reference_urls?: string[];
@@ -1137,4 +1167,70 @@ export async function listSubmissions(token: string): Promise<ItemSubmissionPayl
     cache: "no-store",
   });
   return handleJsonResponse<ItemSubmissionPayload[]>(response);
+}
+
+export type SubmissionSummary = {
+  id: string;
+  title: string;
+  brand_name: string;
+  brand_slug: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  release_year: number | null;
+  category_slug: string | null;
+  subcategory_slug: string | null;
+  image_url: string | null;
+  reference_url: string | null;
+};
+
+export async function listMySubmissions(
+  token: string,
+  params?: { status?: string[] }
+): Promise<SubmissionSummary[]> {
+  const query: QueryParams = {};
+  if (params?.status && params.status.length > 0) {
+    query.status = params.status.join(",");
+  }
+  const response = await fetch(buildUrl("api/submissions/mine/", query), {
+    headers: buildAuthHeaders(token),
+    cache: "no-store",
+  });
+  return handleJsonResponse<SubmissionSummary[]>(response);
+}
+
+export async function getSubmissionDetail(
+  token: string,
+  submissionId: string
+): Promise<ItemSubmissionPayload> {
+  const response = await fetch(buildUrl(`api/item-submissions/${submissionId}/`), {
+    headers: buildAuthHeaders(token),
+    cache: "no-store",
+  });
+  return handleJsonResponse<ItemSubmissionPayload>(response);
+}
+
+export async function saveSubmissionDraft(
+  token: string,
+  payload: CreateSubmissionPayload,
+  draftId?: string
+): Promise<ItemSubmissionPayload> {
+  const path = draftId ? `api/submissions/drafts/${draftId}/` : "api/submissions/drafts/";
+  const method = draftId ? "PATCH" : "POST";
+  const response = await fetch(buildUrl(path), {
+    method,
+    headers: buildJsonHeaders(buildAuthHeaders(token)),
+    body: JSON.stringify(payload),
+  });
+  return handleJsonResponse<ItemSubmissionPayload>(response);
+}
+
+export async function deleteSubmissionDraft(token: string, draftId: string): Promise<void> {
+  const response = await fetch(buildUrl(`api/submissions/drafts/${draftId}/`), {
+    method: "DELETE",
+    headers: buildAuthHeaders(token),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete draft ${draftId}.`);
+  }
 }
