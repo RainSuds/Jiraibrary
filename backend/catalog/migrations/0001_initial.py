@@ -9,6 +9,24 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def add_item_submission_slug_column(apps, schema_editor):
+    """Ensure legacy tables have the item_slug column without vendor-specific SQL."""
+    table_name = 'catalog_itemsubmission'
+    connection = schema_editor.connection
+
+    with connection.cursor() as cursor:
+        existing_columns = {
+            column.name for column in connection.introspection.get_table_description(cursor, table_name)
+        }
+
+    if 'item_slug' in existing_columns:
+        return
+
+    schema_editor.execute(
+        "ALTER TABLE catalog_itemsubmission ADD COLUMN item_slug varchar(255) NOT NULL DEFAULT ''"
+    )
+
+
 class Migration(migrations.Migration):
 
     initial = True
@@ -346,15 +364,9 @@ class Migration(migrations.Migration):
                 'ordering': ['-created_at'],
             },
         ),
-        migrations.RunSQL(
-            sql=(
-                "ALTER TABLE catalog_itemsubmission "
-                "ADD COLUMN IF NOT EXISTS item_slug varchar(255) NOT NULL DEFAULT '';"
-            ),
-            reverse_sql=(
-                "ALTER TABLE catalog_itemsubmission "
-                "DROP COLUMN IF EXISTS item_slug;"
-            ),
+        migrations.RunPython(
+            add_item_submission_slug_column,
+            reverse_code=migrations.RunPython.noop,
         ),
         migrations.CreateModel(
             name='ItemVariant',

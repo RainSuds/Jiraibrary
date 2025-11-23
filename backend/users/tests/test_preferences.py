@@ -22,7 +22,7 @@ class UserPreferenceViewTests(APITestCase):
             email="tester@example.com",
             password="secret-pass",
         )
-        user_models.UserProfile.objects.create(user=self.user)
+        self.profile = user_models.UserProfile.objects.get(user=self.user)
         self.token = Token.objects.create(user=self.user)
         self.url = reverse("api-current-user")
 
@@ -38,9 +38,9 @@ class UserPreferenceViewTests(APITestCase):
             ),
         )
         self.assertEqual(response.status_code, 200)
-        profile = user_models.UserProfile.objects.get(user=self.user)
-        self.assertEqual(profile.preferred_languages, ["ja"])
-        self.assertEqual(profile.preferred_currency, "JPY")
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.preferred_languages, ["ja"])
+        self.assertEqual(self.profile.preferred_currency, "JPY")
         data = cast(dict[str, Any], response.data)
         self.assertEqual(data["preferred_language"], "ja")
         self.assertEqual(data["preferred_currency"], "JPY")
