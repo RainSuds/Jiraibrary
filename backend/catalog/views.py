@@ -2,17 +2,26 @@
 from __future__ import annotations
 
 from typing import Any, cast
+from uuid import UUID
 
 from django.conf import settings
 from django.db.models import Count, Max, Min, Prefetch, Q, QuerySet
-from rest_framework import mixins, permissions, status, viewsets
+from rest_framework import generics, mixins, permissions, status, viewsets
 from rest_framework.exceptions import MethodNotAllowed, PermissionDenied
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.request import Request
 
 from . import filters, models, serializers
-from .permissions import IsCatalogEditor
+from .permissions import IsCatalogEditor, IsImageOwnerOrCatalogEditor
+
+
+def _is_uuid_value(value: Any) -> bool:
+    try:
+        UUID(str(value))
+    except (ValueError, TypeError, AttributeError):
+        return False
+    return True
 
 
 class BrandViewSet(viewsets.ReadOnlyModelViewSet):
@@ -108,7 +117,7 @@ class FeatureViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class ImageViewSet(viewsets.ModelViewSet):
-    queryset = models.Image.objects.select_related("item", "brand", "variant").all()
+    queryset = models.Image.objects.select_related("item", "brand", "variant", "uploaded_by").all()
     serializer_class = serializers.ImageSerializer
     filterset_fields = ["item__slug", "brand__slug", "type", "is_cover"]
     search_fields = ["storage_path", "caption"]
@@ -118,12 +127,40 @@ class ImageViewSet(viewsets.ModelViewSet):
     def get_permissions(self):  # type: ignore[override]
         if self.action in {"list", "retrieve"}:
             return [permissions.AllowAny()]
+        if self.action == "create":
+            return [permissions.IsAuthenticated()]
+        if self.action in {"update", "partial_update", "destroy"}:
+            return [permissions.IsAuthenticated(), IsImageOwnerOrCatalogEditor()]
         return [permissions.IsAuthenticated(), IsCatalogEditor()]
 
     def get_serializer_class(self):  # type: ignore[override]
         if self.action in {"create", "update", "partial_update"}:
             return serializers.ImageUploadSerializer
         return super().get_serializer_class()
+
+    @staticmethod
+    def _user_is_editor(user: Any) -> bool:
+        return bool(getattr(user, "is_staff", False) or getattr(user, "is_superuser", False))
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        user = getattr(self.request, "user", None)
+        extra_kwargs: dict[str, Any] = {}
+        if user and getattr(user, "is_authenticated", False):
+            extra_kwargs["uploaded_by"] = user
+        if not self._user_is_editor(user):
+            for field in ("item", "brand", "variant"):
+                serializer.validated_data.pop(field, None)
+            extra_kwargs.setdefault("item", None)
+            extra_kwargs.setdefault("brand", None)
+            extra_kwargs.setdefault("variant", None)
+        serializer.save(**extra_kwargs)
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        user = getattr(self.request, "user", None)
+        if not self._user_is_editor(user):
+            for field in ("item", "brand", "variant"):
+                serializer.validated_data.pop(field, None)
+        serializer.save()
 
 
 class LanguageViewSet(viewsets.ReadOnlyModelViewSet):
@@ -147,6 +184,7 @@ class ItemViewSet(viewsets.ModelViewSet):
             "default_language",
             "default_currency",
             "submitted_by",
+            "submitted_by__profile",
         )
         .prefetch_related(
             "tags",
@@ -947,7 +985,11 @@ class ItemFavoriteViewSet(
         )
         item_param = request.query_params.get("item")
         if item_param:
-            queryset = queryset.filter(Q(item__slug=item_param) | Q(item__id=item_param))
+            slug_filter = Q(item__slug=item_param)
+            if _is_uuid_value(item_param):
+                queryset = queryset.filter(slug_filter | Q(item__id=item_param))
+            else:
+                queryset = queryset.filter(slug_filter)
         return queryset
 
     def create(self, request, *args, **kwargs):  # type: ignore[override]
@@ -995,3 +1037,70 @@ class ItemSubmissionViewSet(
         if not request.user.is_staff:
             raise PermissionDenied("Only staff users may modify submissions.")
         return super().partial_update(request, *args, **kwargs)
+
+
+class SubmissionDraftViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    serializer_class = serializers.ItemSubmissionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):  # type: ignore[override]
+        request = cast(Request, self.request)
+        return models.ItemSubmission.objects.filter(
+            user=request.user,
+            status=models.ItemSubmission.SubmissionStatus.DRAFT,
+        ).order_by("-updated_at")
+
+    def get_serializer_context(self):  # type: ignore[override]
+        context = super().get_serializer_context()
+        context["draft_mode"] = True
+        return context
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        serializer.save(
+            user=self.request.user,
+            status=models.ItemSubmission.SubmissionStatus.DRAFT,
+        )
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        instance: models.ItemSubmission = serializer.instance  # type: ignore[assignment]
+        if getattr(instance, "user_id", None) != getattr(self.request.user, "id", None):
+            raise PermissionDenied("You can only modify your own drafts.")
+        if instance.status != models.ItemSubmission.SubmissionStatus.DRAFT:
+            raise PermissionDenied("Only drafts may be updated.")
+        serializer.save(
+            user=self.request.user,
+            status=models.ItemSubmission.SubmissionStatus.DRAFT,
+        )
+
+    def perform_destroy(self, instance):  # type: ignore[override]
+        if getattr(instance, "user_id", None) != getattr(self.request.user, "id", None):
+            raise PermissionDenied("You can only delete your own drafts.")
+        if instance.status != models.ItemSubmission.SubmissionStatus.DRAFT:
+            raise PermissionDenied("Only drafts may be deleted.")
+        instance.delete()
+
+
+class UserSubmissionListView(generics.ListAPIView):
+    serializer_class = serializers.UserSubmissionSummarySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):  # type: ignore[override]
+        request = cast(Request, self.request)
+        queryset: QuerySet[models.ItemSubmission] = models.ItemSubmission.objects.filter(user=request.user).order_by(
+            "-updated_at"
+        )
+        status_param = request.query_params.get("status")
+        if status_param:
+            statuses = [value.strip() for value in status_param.split(",") if value and value.strip()]
+            if statuses:
+                queryset = queryset.filter(status__in=statuses)
+        return queryset

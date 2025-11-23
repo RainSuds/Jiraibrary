@@ -206,7 +206,10 @@ DATABASES["default"]["ATOMIC_REQUESTS"] = True
 DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE")
 DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 DATABASES["default"].setdefault("OPTIONS", {})
-DATABASES["default"]["OPTIONS"]["sslmode"] = "require"
+if env.bool("DATABASE_REQUIRE_SSL", default=False):
+    DATABASES["default"]["OPTIONS"]["sslmode"] = "require"
+else:
+    DATABASES["default"]["OPTIONS"].pop("sslmode", None)
 
 
 AUTH_USER_MODEL = "users.User"
@@ -226,7 +229,7 @@ REST_FRAMEWORK: dict[str, Any] = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "DEFAULT_PAGINATION_CLASS": "config.pagination.StandardResultsSetPagination",
     "PAGE_SIZE": 25,
 }
 

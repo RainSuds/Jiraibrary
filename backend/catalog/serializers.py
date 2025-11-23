@@ -1,7 +1,7 @@
 """Serializers backing the REST API for catalog resources."""
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional, cast
 
 PLACEHOLDER_IMAGE_URL = "https://placehold.co/600x800?text=Jiraibrary"
@@ -10,6 +10,30 @@ from django.db import transaction
 from rest_framework import serializers
 
 from . import models
+
+
+SIZE_CATEGORY_CHOICES = (
+    ("alpha", "Alpha (XS/S/M/etc.)"),
+    ("numeric", "Numeric (2/4/6/etc.)"),
+    ("shoe", "Shoe"),
+    ("one_size", "One Size"),
+)
+
+MEASUREMENT_FIELD_NAMES = (
+    "bust",
+    "waist",
+    "hip",
+    "length",
+    "sleeve_length",
+    "hem",
+    "heel_height",
+    "bag_depth",
+)
+
+UNIT_SYSTEM_CHOICES = ("metric", "imperial")
+
+CM_PER_INCH = Decimal("2.54")
+TWO_DECIMAL_PLACES = Decimal("0.01")
 
 
 class LanguageSerializer(serializers.ModelSerializer):
@@ -279,6 +303,7 @@ class TagTranslationSerializer(serializers.ModelSerializer):
 
 class ImageSerializer(serializers.ModelSerializer):
     url = serializers.SerializerMethodField()
+    uploaded_by = serializers.UUIDField(source="uploaded_by_id", read_only=True)
 
     class Meta:
         model = models.Image
@@ -301,6 +326,7 @@ class ImageSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "url",
+            "uploaded_by",
         ]
 
     def get_url(self, obj: models.Image) -> str:
@@ -381,7 +407,6 @@ class ItemTranslationSerializer(serializers.ModelSerializer):
             "pattern",
             "fit",
             "length",
-            "occasion",
             "season",
             "lining",
             "closure_type",
@@ -447,7 +472,6 @@ class ItemMetadataSerializer(serializers.ModelSerializer):
         fields = [
             "pattern",
             "sleeve_type",
-            "occasion",
             "season",
             "fit",
             "length",
@@ -466,6 +490,7 @@ class ItemSummarySerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     brand = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
+    subcategory = serializers.SerializerMethodField()
     primary_price = serializers.SerializerMethodField()
     colors = serializers.SerializerMethodField()
     tags = serializers.SerializerMethodField()
@@ -478,6 +503,7 @@ class ItemSummarySerializer(serializers.ModelSerializer):
             "name",
             "brand",
             "category",
+            "subcategory",
             "release_year",
             "has_matching_set",
             "verified_source",
@@ -502,6 +528,16 @@ class ItemSummarySerializer(serializers.ModelSerializer):
         if not category:
             return None
         return {"id": str(category.pk), "name": category.name}
+
+    def get_subcategory(self, obj: models.Item) -> dict | None:
+        subcategory = getattr(obj, "subcategory", None)
+        if not subcategory:
+            return None
+        return {
+            "id": str(subcategory.pk),
+            "name": subcategory.name,
+            "slug": subcategory.slug,
+        }
 
     def get_primary_price(self, obj: models.Item) -> dict | None:
         prices_manager: Any = getattr(obj, "prices", None)
@@ -582,6 +618,10 @@ class ItemDetailSerializer(ItemSummarySerializer):
     fabrics = serializers.SerializerMethodField()
     features = serializers.SerializerMethodField()
     gallery = serializers.SerializerMethodField()
+    submitted_by = serializers.SerializerMethodField()
+    approved_at = serializers.DateTimeField(required=False, allow_null=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
 
     class Meta(ItemSummarySerializer.Meta):
         fields = ItemSummarySerializer.Meta.fields + [
@@ -600,6 +640,10 @@ class ItemDetailSerializer(ItemSummarySerializer):
             "fabrics",
             "features",
             "gallery",
+            "submitted_by",
+            "approved_at",
+            "created_at",
+            "updated_at",
         ]
 
     def get_default_language(self, obj: models.Item) -> str | None:
@@ -721,6 +765,18 @@ class ItemDetailSerializer(ItemSummarySerializer):
             )
         return results
 
+    def get_submitted_by(self, obj: models.Item) -> dict[str, Any] | None:
+        user = getattr(obj, "submitted_by", None)
+        if not user:
+            return None
+        profile = getattr(user, "profile", None)
+        display_name = getattr(profile, "display_name", None) or user.username
+        return {
+            "id": str(user.id),
+            "username": user.username,
+            "display_name": display_name,
+        }
+
     def get_gallery(self, obj: models.Item) -> list[dict]:
         images_manager: Any = getattr(obj, "images", None)
         if images_manager is None:
@@ -752,7 +808,6 @@ class ItemDetailSerializer(ItemSummarySerializer):
 class ItemMetadataInputSerializer(serializers.Serializer):
     pattern = serializers.CharField(required=False, allow_blank=True)
     sleeve_type = serializers.CharField(required=False, allow_blank=True)
-    occasion = serializers.CharField(required=False, allow_blank=True)
     season = serializers.CharField(required=False, allow_blank=True)
     fit = serializers.CharField(required=False, allow_blank=True)
     length = serializers.CharField(required=False, allow_blank=True)
@@ -771,7 +826,6 @@ class ItemTranslationInputSerializer(serializers.Serializer):
     pattern = serializers.CharField(required=False, allow_blank=True)
     fit = serializers.CharField(required=False, allow_blank=True)
     length = serializers.CharField(required=False, allow_blank=True)
-    occasion = serializers.CharField(required=False, allow_blank=True)
     season = serializers.CharField(required=False, allow_blank=True)
     lining = serializers.CharField(required=False, allow_blank=True)
     closure_type = serializers.CharField(required=False, allow_blank=True)
@@ -1019,7 +1073,6 @@ class ItemWriteSerializer(serializers.Serializer):
                 pattern=entry.get("pattern", ""),
                 fit=entry.get("fit", ""),
                 length=entry.get("length", ""),
-                occasion=entry.get("occasion", ""),
                 season=entry.get("season", ""),
                 lining=entry.get("lining", ""),
                 closure_type=entry.get("closure_type", ""),
@@ -1298,6 +1351,83 @@ class ItemSubmissionPriceSerializer(serializers.Serializer):
         return cleaned
 
 
+class ItemSubmissionCollectionProposalSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    season = serializers.CharField(required=False, allow_blank=True)
+    year = serializers.IntegerField(required=False, allow_null=True, min_value=1900, max_value=2100)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    brand_slug = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_name(self, value: str) -> str:  # type: ignore[override]
+        cleaned = value.strip()
+        if not cleaned:
+            raise serializers.ValidationError("Name is required when proposing a collection.")
+        return cleaned
+
+    def to_representation(self, instance: Any) -> Any:  # type: ignore[override]
+        if not instance:
+            return {}
+        if isinstance(instance, dict) and not instance.get("name"):
+            return {}
+        return super().to_representation(instance)
+
+
+class ItemSubmissionSizeMeasurementSerializer(serializers.Serializer):
+    size_label = serializers.CharField(required=False, allow_blank=True)
+    size_category = serializers.ChoiceField(choices=SIZE_CATEGORY_CHOICES, required=False, allow_blank=True)
+    unit_system = serializers.ChoiceField(choices=[("metric", "Metric"), ("imperial", "Imperial")], default="metric")
+    is_one_size = serializers.BooleanField(required=False)
+    notes = serializers.CharField(required=False, allow_blank=True)
+
+    bust = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
+    waist = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
+    hip = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
+    length = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
+    sleeve_length = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
+    hem = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
+    heel_height = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
+    bag_depth = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:  # type: ignore[override]
+        size_category = (attrs.get("size_category") or "").strip()
+        is_one_size = bool(attrs.get("is_one_size")) or size_category == "one_size"
+        if is_one_size and not size_category:
+            size_category = "one_size"
+        size_label = (attrs.get("size_label") or "").strip()
+        if not is_one_size and not size_label:
+            raise serializers.ValidationError("Size label is required unless the entry is marked as one size.")
+
+        has_measurement = any(attrs.get(field) not in (None, "") for field in MEASUREMENT_FIELD_NAMES)
+        note = (attrs.get("notes") or "").strip()
+        if not has_measurement and not note:
+            raise serializers.ValidationError("Provide at least one measurement or note for each size entry.")
+
+        attrs["size_label"] = size_label
+        attrs["size_category"] = size_category
+        attrs["is_one_size"] = is_one_size
+        attrs["notes"] = note
+        return attrs
+
+
+class UserSubmissionSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.ItemSubmission
+        fields = [
+            "id",
+            "title",
+            "brand_name",
+            "brand_slug",
+            "status",
+            "created_at",
+            "updated_at",
+            "release_year",
+            "category_slug",
+            "subcategory_slug",
+            "image_url",
+            "reference_url",
+        ]
+
+
 class ItemSubmissionSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(read_only=True)
     status = serializers.CharField(read_only=True)
@@ -1317,6 +1447,9 @@ class ItemSubmissionSerializer(serializers.ModelSerializer):
     fabric_breakdown = ItemSubmissionFabricSerializer(many=True, required=False)
     price_amounts = ItemSubmissionPriceSerializer(many=True, required=False)
     tags = serializers.ListField(child=serializers.CharField(), required=False)
+    reference_urls = serializers.ListField(child=serializers.URLField(), required=False)
+    collection_proposal = ItemSubmissionCollectionProposalSerializer(required=False, allow_null=True)
+    size_measurements = ItemSubmissionSizeMeasurementSerializer(many=True, required=False)
 
     class Meta:
         model = models.ItemSubmission
@@ -1326,8 +1459,10 @@ class ItemSubmissionSerializer(serializers.ModelSerializer):
             "item_slug",
             "title",
             "brand_name",
+            "brand_slug",
             "description",
             "reference_url",
+            "reference_urls",
             "image_url",
             "tags",
             "name_translations",
@@ -1341,6 +1476,8 @@ class ItemSubmissionSerializer(serializers.ModelSerializer):
             "fabric_breakdown",
             "feature_slugs",
             "collection_reference",
+            "collection_proposal",
+            "size_measurements",
             "price_amounts",
             "origin_country",
             "production_country",
@@ -1364,6 +1501,7 @@ class ItemSubmissionSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:  # type: ignore[override]
+        is_draft_mode = bool(self.context.get("draft_mode"))
         name_entries = attrs.get("name_translations")
         if name_entries is None:
             initial_translations = None
@@ -1385,19 +1523,23 @@ class ItemSubmissionSerializer(serializers.ModelSerializer):
             name_entries = list(name_entries)
         if not isinstance(name_entries, list):
             raise serializers.ValidationError({"name_translations": "Invalid name translation payload."})
-        if not name_entries:
-            raise serializers.ValidationError({"name_translations": "Provide at least one name entry."})
-
         sanitized_names: list[dict[str, str]] = []
         for entry in name_entries:
             language = entry.get("language", "").strip()
             value = entry.get("value", "").strip()
             if not language or not value:
+                if is_draft_mode:
+                    continue
                 raise serializers.ValidationError({"name_translations": "Each name requires a language and value."})
             sanitized_names.append({"language": language, "value": value})
-        attrs["name_translations"] = sanitized_names
+        if sanitized_names:
+            attrs["name_translations"] = sanitized_names
+        else:
+            if not is_draft_mode:
+                raise serializers.ValidationError({"name_translations": "Provide at least one name entry."})
+            attrs["name_translations"] = []
 
-        if not attrs.get("title"):
+        if not attrs.get("title") and sanitized_names:
             english = next((entry["value"] for entry in sanitized_names if entry["language"].lower() == "en"), None)
             attrs["title"] = english or sanitized_names[0]["value"]
 
@@ -1429,11 +1571,16 @@ class ItemSubmissionSerializer(serializers.ModelSerializer):
             language = entry.get("language", "").strip()
             value = entry.get("value", "").strip()
             if not language or not value:
+                if is_draft_mode:
+                    continue
                 raise serializers.ValidationError(
                     {"description_translations": "Each description entry requires a language and value."}
                 )
             sanitized_descriptions.append({"language": language, "value": value})
-        attrs["description_translations"] = sanitized_descriptions
+        if sanitized_descriptions:
+            attrs["description_translations"] = sanitized_descriptions
+        else:
+            attrs["description_translations"] = []
 
         if not attrs.get("description") and sanitized_descriptions:
             english_description = next(
@@ -1469,6 +1616,29 @@ class ItemSubmissionSerializer(serializers.ModelSerializer):
         attrs["feature_slugs"] = self._dedupe(self._sanitize_slug_list(attrs.get("feature_slugs")))
         attrs["tags"] = self._dedupe(self._sanitize_slug_list(attrs.get("tags")))
 
+        reference_urls = attrs.get("reference_urls")
+        if reference_urls is None:
+            reference_urls = self._extract_initial_reference_urls()
+        sanitized_references = self._sanitize_reference_urls(reference_urls)
+        fallback_reference = attrs.get("reference_url") or self._extract_initial_reference_url()
+        if fallback_reference:
+            sanitized_references.insert(0, fallback_reference)
+        attrs["reference_urls"] = self._dedupe_urls(sanitized_references)
+        primary_reference = attrs["reference_urls"][0] if attrs["reference_urls"] else ""
+        attrs["reference_url"] = primary_reference
+
+        proposal_payload = attrs.get("collection_proposal")
+        if proposal_payload is None:
+            proposal_payload = self._extract_initial_collection_proposal()
+        attrs["collection_proposal"] = self._sanitize_collection_proposal(proposal_payload)
+        if attrs["collection_proposal"]:
+            attrs["collection_reference"] = ""
+        else:
+            attrs["collection_proposal"] = {}
+            attrs["collection_reference"] = attrs.get("collection_reference", "").strip()
+
+        attrs["size_measurements"] = self._sanitize_size_measurements(attrs.get("size_measurements"))
+
         for key in ("item_slug", "category_slug", "subcategory_slug", "collection_reference"):
             value = attrs.get(key)
             if isinstance(value, str):
@@ -1478,6 +1648,11 @@ class ItemSubmissionSerializer(serializers.ModelSerializer):
             value = attrs.get(key)
             if isinstance(value, str):
                 attrs[key] = self._sanitize_country_code(value)
+
+        if is_draft_mode and not self._has_user_supplied_content(attrs):
+            raise serializers.ValidationError(
+                {"non_field_errors": ["Add at least one field before saving your draft."]}
+            )
 
         return attrs
 
@@ -1493,6 +1668,12 @@ class ItemSubmissionSerializer(serializers.ModelSerializer):
         data["description_translations"] = descriptions
         data["fabric_breakdown"] = instance.fabric_breakdown or []
         data["price_amounts"] = instance.price_amounts or []
+        references = instance.reference_urls or []
+        if not references and instance.reference_url:
+            references = [instance.reference_url]
+        data["reference_urls"] = references
+        data["collection_proposal"] = instance.collection_proposal or {}
+        data["size_measurements"] = instance.size_measurements or []
         return data
 
     def _sanitize_slug_list(self, entries: Any) -> list[str]:
@@ -1524,3 +1705,181 @@ class ItemSubmissionSerializer(serializers.ModelSerializer):
             seen.add(key)
             ordered.append(key)
         return ordered
+
+    def _extract_initial_reference_urls(self) -> list[str]:
+        if isinstance(self.initial_data, dict):
+            initial = self.initial_data.get("reference_urls")
+            if isinstance(initial, list):
+                return [str(entry) for entry in initial]
+        if self.instance and isinstance(self.instance.reference_urls, list):
+            return list(self.instance.reference_urls)
+        return []
+
+    def _extract_initial_reference_url(self) -> str:
+        if isinstance(self.initial_data, dict):
+            raw = self.initial_data.get("reference_url")
+            if isinstance(raw, str) and raw.strip():
+                return raw.strip()
+        if self.instance and isinstance(self.instance.reference_url, str):
+            return self.instance.reference_url
+        return ""
+
+    def _sanitize_reference_urls(self, entries: Any) -> list[str]:
+        if entries is None:
+            return []
+        candidates: list[str]
+        if isinstance(entries, (list, tuple)):
+            candidates = [str(entry) for entry in entries]
+        else:
+            candidates = [str(entries)]
+        url_field = serializers.URLField()
+        sanitized: list[str] = []
+        for candidate in candidates:
+            trimmed = candidate.strip()
+            if not trimmed:
+                continue
+            try:
+                validated = cast(str, url_field.run_validation(cast(Any, trimmed)))
+            except serializers.ValidationError:
+                raise serializers.ValidationError({"reference_urls": f"Invalid URL '{trimmed}'."})
+            sanitized.append(validated)
+        return sanitized
+
+    def _dedupe_urls(self, entries: list[str]) -> list[str]:
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for entry in entries:
+            if entry in seen:
+                continue
+            seen.add(entry)
+            ordered.append(entry)
+        return ordered
+
+    def _sanitize_size_measurements(self, entries: Any) -> list[dict[str, Any]]:
+        if not entries:
+            return []
+        serializer = ItemSubmissionSizeMeasurementSerializer(data=entries, many=True)
+        serializer.is_valid(raise_exception=True)
+        validated_entries = cast(List[dict[str, Any]], serializer.validated_data)
+        cleaned: list[dict[str, Any]] = []
+        seen_one_size = False
+        for entry in validated_entries:
+            raw_label = entry.get("size_label", "")
+            size_category = (entry.get("size_category") or "").strip()
+            is_one_size = size_category == "one_size"
+            if is_one_size:
+                if seen_one_size:
+                    raise serializers.ValidationError(
+                        {"size_measurements": "Only one 'one size' entry is allowed."}
+                    )
+                seen_one_size = True
+                size_label = "One size"
+            else:
+                size_label = raw_label.strip()
+                if not size_label:
+                    continue
+            unit_system = (entry.get("unit_system") or "metric").lower()
+            measurement_map: dict[str, float] = {}
+            for field in MEASUREMENT_FIELD_NAMES:
+                raw_value = entry.get(field)
+                if raw_value in (None, ""):
+                    continue
+                cm_value, inch_value = self._convert_measurement_pair(cast(Decimal, raw_value), unit_system)
+                measurement_map[f"{field}_cm"] = self._quantize_decimal(cm_value)
+                measurement_map[f"{field}_in"] = self._quantize_decimal(inch_value)
+            cleaned.append(
+                {
+                    "size_label": size_label,
+                    "size_category": size_category,
+                    "unit_system": unit_system,
+                    "is_one_size": is_one_size or bool(entry.get("is_one_size")),
+                    "notes": entry.get("notes", ""),
+                    "measurements": measurement_map,
+                }
+            )
+        return cleaned
+
+    def _convert_measurement_pair(self, value: Decimal, unit_system: str) -> tuple[Decimal, Decimal]:
+        if unit_system == "imperial":
+            inches = value
+            centimeters = value * CM_PER_INCH
+        else:
+            centimeters = value
+            inches = value / CM_PER_INCH
+        return centimeters, inches
+
+    def _quantize_decimal(self, value: Decimal) -> float:
+        return float(value.quantize(TWO_DECIMAL_PLACES, rounding=ROUND_HALF_UP))
+
+    def _extract_initial_collection_proposal(self) -> dict[str, Any]:
+        if isinstance(self.initial_data, dict):
+            candidate = self.initial_data.get("collection_proposal")
+            if isinstance(candidate, dict):
+                return candidate
+        if self.instance and isinstance(self.instance.collection_proposal, dict):
+            return self.instance.collection_proposal
+        return {}
+
+    def _sanitize_collection_proposal(self, value: Any) -> dict[str, Any]:
+        if not value:
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError({"collection_proposal": "Expected an object."})
+        serializer = ItemSubmissionCollectionProposalSerializer(data=value)
+        serializer.is_valid(raise_exception=True)
+        validated_data = cast(dict[str, Any], serializer.validated_data)
+        cleaned: dict[str, Any] = {}
+        for key, entry_value in validated_data.items():
+            if entry_value in ("", None):
+                continue
+            cleaned[key] = entry_value
+        return cleaned
+
+    def _has_user_supplied_content(self, attrs: dict[str, Any]) -> bool:
+        candidate_fields = [
+            "title",
+            "brand_name",
+            "brand_slug",
+            "description",
+            "reference_url",
+            "reference_urls",
+            "image_url",
+            "tags",
+            "name_translations",
+            "description_translations",
+            "release_year",
+            "category_slug",
+            "subcategory_slug",
+            "style_slugs",
+            "substyle_slugs",
+            "color_slugs",
+            "fabric_breakdown",
+            "feature_slugs",
+            "collection_reference",
+            "collection_proposal",
+            "size_measurements",
+            "price_amounts",
+            "origin_country",
+            "production_country",
+            "item_slug",
+            "limited_edition",
+            "has_matching_set",
+            "verified_source",
+        ]
+        for field in candidate_fields:
+            if self._value_has_content(attrs.get(field)):
+                return True
+        return False
+
+    def _value_has_content(self, value: Any) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, (list, tuple, set)):
+            return any(self._value_has_content(entry) for entry in value)
+        if isinstance(value, dict):
+            return any(self._value_has_content(entry) for entry in value.values())
+        if isinstance(value, bool):
+            return value
+        return True

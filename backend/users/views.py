@@ -16,7 +16,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import User, UserProfile
-from .serializers import LoginSerializer, RegisterSerializer, UserSerializer
+from .serializers import (
+    LoginSerializer,
+    RegisterSerializer,
+    UserPreferenceSerializer,
+    UserSerializer,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -89,6 +94,29 @@ class CurrentUserView(APIView):
     def get(self, request, *args, **kwargs):  # type: ignore[override]
         serializer = UserSerializer(request.user, context={"request": request})
         return Response(serializer.data)
+
+    def patch(self, request, *args, **kwargs):  # type: ignore[override]
+        serializer = UserPreferenceSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        validated = serializer.validated_data
+        update_fields: list[str] = []
+
+        if "preferred_language" in validated:
+            language = validated.get("preferred_language") or ""
+            profile.preferred_languages = [language] if language else []
+            update_fields.append("preferred_languages")
+
+        if "preferred_currency" in validated:
+            profile.preferred_currency = validated.get("preferred_currency") or ""
+            update_fields.append("preferred_currency")
+
+        if update_fields:
+            update_fields.append("updated_at")
+            profile.save(update_fields=update_fields)
+
+        response_data = UserSerializer(request.user, context={"request": request}).data
+        return Response(response_data)
 
 
 class GoogleLoginView(APIView):

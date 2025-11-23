@@ -69,6 +69,7 @@ class Migration(migrations.Migration):
                 ('location', models.CharField(blank=True, max_length=128)),
                 ('website', models.URLField(blank=True)),
                 ('preferred_languages', models.JSONField(blank=True, default=list)),
+                ('preferred_currency', models.CharField(blank=True, max_length=3)),
                 ('social_links', models.JSONField(blank=True, default=dict)),
                 ('avatar_url', models.URLField(blank=True)),
                 ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='profile', to=settings.AUTH_USER_MODEL)),

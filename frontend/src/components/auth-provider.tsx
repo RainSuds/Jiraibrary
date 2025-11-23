@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 import {
+  ApiError,
   AuthResponse,
   UserProfile,
   getCurrentUser,
@@ -11,6 +12,8 @@ import {
   logout as apiLogout,
   register as apiRegister,
   RegisterPayload,
+  UpdateUserPreferencesPayload,
+  updateUserPreferences,
 } from "@/lib/api";
 
 type AuthContextValue = {
@@ -22,6 +25,7 @@ type AuthContextValue = {
   register: (payload: RegisterPayload) => Promise<AuthResponse>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  updatePreferences: (payload: UpdateUserPreferencesPayload) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -43,7 +47,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         window.localStorage.setItem(STORAGE_KEY, authToken);
       }
     } catch (error) {
-      console.error("Failed to hydrate user", error);
+      if (error instanceof ApiError && error.status === 401) {
+        console.info("Stored session token expired; clearing it.");
+      } else {
+        console.error("Failed to hydrate user", error);
+      }
       setToken(null);
       setUser(null);
       if (typeof window !== "undefined") {
@@ -134,6 +142,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await hydrate(token);
   };
 
+  const updatePreferences = useCallback(
+    async (payload: UpdateUserPreferencesPayload) => {
+      if (!token) {
+        return;
+      }
+      try {
+        const updated = await updateUserPreferences(token, payload);
+        setUser(updated);
+      } catch (error) {
+        console.error("Failed to update user preferences", error);
+        throw error;
+      }
+    },
+    [token],
+  );
+
   const value: AuthContextValue = {
     user,
     token,
@@ -143,6 +167,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     register,
     logout,
     refresh,
+    updatePreferences,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

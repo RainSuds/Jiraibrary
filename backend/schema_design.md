@@ -222,7 +222,6 @@ Many-to-many relationships use explicit through models:
 | `pattern` | varchar(255) | Optional |
 | `fit` | varchar(255) | Optional |
 | `length` | varchar(255) | Optional |
-| `occasion` | varchar(255) | Optional |
 | `season` | varchar(255) | Optional |
 | `lining` | varchar(255) | Optional |
 | `closure_type` | varchar(255) | Optional |
@@ -284,7 +283,6 @@ Many-to-many relationships use explicit through models:
 | `item_id` | uuid FK → item | One-to-one |
 | `pattern` | varchar(64) | Optional |
 | `sleeve_type` | varchar(128) | Optional |
-| `occasion` | varchar(128) | Optional |
 | `season` | varchar(128) | Optional |
 | `fit` | varchar(128) | Optional |
 | `length` | varchar(128) | Optional |

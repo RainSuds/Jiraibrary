@@ -96,10 +96,10 @@ export default function ProfilePage() {
         </div>
         <div className="mt-8 flex flex-wrap gap-4">
           <Link
-            href="/add-entry"
+            href="/submissions"
             className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
           >
-            Submit a new entry
+            View your submissions
           </Link>
           <Link
             href="/search"
@@ -129,11 +129,11 @@ export default function ProfilePage() {
           {" "}
           to bookmark looks you love, or head to
           {" "}
-          <Link href="/add-entry" className="font-semibold text-rose-700 hover:text-rose-900">
-            submit a new entry
+          <Link href="/submissions" className="font-semibold text-rose-700 hover:text-rose-900">
+            your submissions
           </Link>
           {" "}
-          to share references with the community.
+          to review contribution status and start a new entry.
         </p>
       </section>
     </div>

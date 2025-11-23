@@ -9,6 +9,24 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def add_item_submission_slug_column(apps, schema_editor):
+    """Ensure legacy tables have the item_slug column without vendor-specific SQL."""
+    table_name = 'catalog_itemsubmission'
+    connection = schema_editor.connection
+
+    with connection.cursor() as cursor:
+        existing_columns = {
+            column.name for column in connection.introspection.get_table_description(cursor, table_name)
+        }
+
+    if 'item_slug' in existing_columns:
+        return
+
+    schema_editor.execute(
+        "ALTER TABLE catalog_itemsubmission ADD COLUMN item_slug varchar(255) NOT NULL DEFAULT ''"
+    )
+
+
 class Migration(migrations.Migration):
 
     initial = True
@@ -180,6 +198,7 @@ class Migration(migrations.Migration):
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('slug', models.SlugField(max_length=255, unique=True)),
                 ('origin_country', models.CharField(blank=True, max_length=2)),
+                ('production_country', models.CharField(blank=True, max_length=2)),
                 ('release_year', models.PositiveSmallIntegerField(blank=True, null=True, validators=[django.core.validators.MinValueValidator(1970), django.core.validators.MaxValueValidator(2100)])),
                 ('release_date', models.DateField(blank=True, null=True)),
                 ('collaboration', models.CharField(blank=True, max_length=255)),
@@ -189,6 +208,7 @@ class Migration(migrations.Migration):
                 ('status', models.CharField(choices=[('draft', 'Draft'), ('pending_review', 'Pending Review'), ('published', 'Published'), ('archived', 'Archived')], default='draft', max_length=20)),
                 ('approved_at', models.DateTimeField(blank=True, null=True)),
                 ('extra_metadata', models.JSONField(blank=True, default=dict)),
+                ('product_number', models.CharField(blank=True, max_length=64)),
                 ('brand', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='items', to='catalog.brand')),
                 ('category', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='items', to='catalog.category')),
                 ('default_currency', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='default_currency_items', to='catalog.currency')),
@@ -287,7 +307,6 @@ class Migration(migrations.Migration):
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('pattern', models.CharField(blank=True, max_length=64)),
                 ('sleeve_type', models.CharField(blank=True, max_length=128)),
-                ('occasion', models.CharField(blank=True, max_length=128)),
                 ('season', models.CharField(blank=True, max_length=128)),
                 ('fit', models.CharField(blank=True, max_length=128)),
                 ('length', models.CharField(blank=True, max_length=128)),
@@ -311,9 +330,11 @@ class Migration(migrations.Migration):
                 ('item_slug', models.SlugField(blank=True, max_length=255)),
                 ('title', models.CharField(max_length=255)),
                 ('brand_name', models.CharField(max_length=255)),
+                ('brand_slug', models.SlugField(blank=True, max_length=255)),
                 ('description', models.TextField(blank=True)),
                 ('description_translations', models.JSONField(blank=True, default=list)),
                 ('reference_url', models.URLField(blank=True)),
+                ('reference_urls', models.JSONField(blank=True, default=list)),
                 ('image_url', models.URLField(blank=True)),
                 ('tags', models.JSONField(blank=True, default=list)),
                 ('name_translations', models.JSONField(blank=True, default=list)),
@@ -326,13 +347,15 @@ class Migration(migrations.Migration):
                 ('fabric_breakdown', models.JSONField(blank=True, default=list)),
                 ('feature_slugs', models.JSONField(blank=True, default=list)),
                 ('collection_reference', models.CharField(blank=True, max_length=255)),
+                ('collection_proposal', models.JSONField(blank=True, default=dict)),
+                ('size_measurements', models.JSONField(blank=True, default=list)),
                 ('price_amounts', models.JSONField(blank=True, default=list)),
                 ('origin_country', models.CharField(blank=True, max_length=2)),
                 ('production_country', models.CharField(blank=True, max_length=2)),
                 ('limited_edition', models.BooleanField(default=False)),
                 ('has_matching_set', models.BooleanField(default=False)),
                 ('verified_source', models.BooleanField(default=False)),
-                ('status', models.CharField(choices=[('pending', 'Pending'), ('under_review', 'Under Review'), ('approved', 'Approved'), ('rejected', 'Rejected')], default='pending', max_length=16)),
+                ('status', models.CharField(choices=[('draft', 'Draft'), ('pending', 'Pending'), ('under_review', 'Under Review'), ('approved', 'Approved'), ('rejected', 'Rejected')], default='pending', max_length=16)),
                 ('moderator_notes', models.TextField(blank=True)),
                 ('linked_item', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='submission_sources', to='catalog.item')),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='item_submissions', to=settings.AUTH_USER_MODEL)),
@@ -340,6 +363,10 @@ class Migration(migrations.Migration):
             options={
                 'ordering': ['-created_at'],
             },
+        ),
+        migrations.RunPython(
+            add_item_submission_slug_column,
+            reverse_code=migrations.RunPython.noop,
         ),
         migrations.CreateModel(
             name='ItemVariant',
@@ -400,6 +427,7 @@ class Migration(migrations.Migration):
                 ('dominant_color', models.CharField(blank=True, max_length=7)),
                 ('source', models.CharField(blank=True, max_length=32)),
                 ('license', models.CharField(blank=True, max_length=255)),
+                ('uploaded_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='uploaded_images', to=settings.AUTH_USER_MODEL)),
                 ('brand', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='images', to='catalog.brand')),
                 ('item', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='images', to='catalog.item')),
                 ('variant', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='images', to='catalog.itemvariant')),
@@ -576,7 +604,6 @@ class Migration(migrations.Migration):
                 ('pattern', models.CharField(blank=True, max_length=255)),
                 ('fit', models.CharField(blank=True, max_length=255)),
                 ('length', models.CharField(blank=True, max_length=255)),
-                ('occasion', models.CharField(blank=True, max_length=255)),
                 ('season', models.CharField(blank=True, max_length=255)),
                 ('lining', models.CharField(blank=True, max_length=255)),
                 ('closure_type', models.CharField(blank=True, max_length=255)),

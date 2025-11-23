@@ -17,6 +17,8 @@ from catalog.views import (  # type: ignore[F401]
     FeatureViewSet,
     ItemFavoriteViewSet,
     ItemSubmissionViewSet,
+    SubmissionDraftViewSet,
+    UserSubmissionListView,
     ImageViewSet,
     ItemViewSet,
     LanguageViewSet,
@@ -44,6 +46,7 @@ router.register(r"languages", LanguageViewSet)
 router.register(r"currencies", CurrencyViewSet)
 router.register(r"item-favorites", ItemFavoriteViewSet, basename="item-favorite")
 router.register(r"item-submissions", ItemSubmissionViewSet, basename="item-submission")
+router.register(r"submissions/drafts", SubmissionDraftViewSet, basename="submission-draft")
 
 
 def health_check(_request):
@@ -65,5 +68,6 @@ urlpatterns = [
     path("api/auth/register/", RegisterView.as_view(), name="api-register"),
     path("api/auth/logout/", LogoutView.as_view(), name="api-logout"),
     path("api/auth/me/", CurrentUserView.as_view(), name="api-current-user"),
+    path("api/submissions/mine/", UserSubmissionListView.as_view(), name="user-submissions"),
     path("api/", include(router.urls)),
 ]

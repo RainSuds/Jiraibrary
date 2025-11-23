@@ -839,7 +839,7 @@ export default function FilterPanel({ filters, selected, query }: FilterPanelPro
               max={maxBound}
               value={sliderMinValue}
               onChange={(event) => handleMinSliderChange(Number(event.target.value))}
-              className="h-1 w-full appearance-none rounded-full bg-rose-100 accent-rose-500"
+              className="h-1 flex-1 min-w-0 appearance-none rounded-full bg-rose-100 accent-rose-500"
             />
             <input
               type="range"
@@ -847,7 +847,7 @@ export default function FilterPanel({ filters, selected, query }: FilterPanelPro
               max={maxBound}
               value={sliderMaxValue}
               onChange={(event) => handleMaxSliderChange(Number(event.target.value))}
-              className="h-1 w-full appearance-none rounded-full bg-rose-100 accent-rose-500"
+              className="h-1 flex-1 min-w-0 appearance-none rounded-full bg-rose-100 accent-rose-500"
             />
           </div>
         </div>
@@ -952,7 +952,7 @@ export default function FilterPanel({ filters, selected, query }: FilterPanelPro
                   typeof range.max === "number" && range.max < value ? value : range.max;
                 onChange(range.id, { min: value, max: updatedMax });
               }}
-              className="h-1 w-full appearance-none rounded-full bg-rose-100 accent-rose-500"
+              className="h-1 flex-1 min-w-0 appearance-none rounded-full bg-rose-100 accent-rose-500"
             />
             <input
               type="range"
@@ -965,7 +965,7 @@ export default function FilterPanel({ filters, selected, query }: FilterPanelPro
                   typeof range.min === "number" && range.min > value ? value : range.min;
                 onChange(range.id, { max: value, min: updatedMin });
               }}
-              className="h-1 w-full appearance-none rounded-full bg-rose-100 accent-rose-500"
+              className="h-1 flex-1 min-w-0 appearance-none rounded-full bg-rose-100 accent-rose-500"
             />
           </div>
         </div>

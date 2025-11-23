@@ -435,7 +435,9 @@ def _create_substyles(styles: dict[str, models.Style]) -> dict[str, models.Subst
 
 def _create_colors() -> dict[str, models.Color]:
     data = {
+        "white": {"name": "White", "hex_code": "#ffffff"},
         "pink": {"name": "Pink", "hex_code": "#ffc0cb"},
+        "blue": {"name": "Blue", "hex_code": "#2f6ed9"},
         "sax": {"name": "Sax", "hex_code": "#9cd0ff"},
         "black": {"name": "Black", "hex_code": "#000000"},
     }
@@ -546,6 +548,18 @@ def _create_features() -> dict[str, models.Feature]:
             "name": "Tuxedo Collar",
             "category": models.Feature.FeatureCategory.CONSTRUCTION,
         },
+        "sailor-collar": {
+            "name": "Sailor Collar",
+            "category": models.Feature.FeatureCategory.CONSTRUCTION,
+        },
+        "long-sleeves": {
+            "name": "Long Sleeves",
+            "category": models.Feature.FeatureCategory.CONSTRUCTION,
+        },
+        "skirt-pants": {
+            "name": "Skirt Pants",
+            "category": models.Feature.FeatureCategory.CONSTRUCTION,
+        },
     }
     features: dict[str, models.Feature] = {}
     for key, attrs in data.items():
@@ -568,6 +582,7 @@ def _create_collections(brands: dict[str, models.Brand]) -> dict[str, models.Col
         ],
         "liz-lisa": [
             {"name": "Sewing Bear Set-Up", "season": models.Collection.Season.WINTER, "year": 2025},
+            {"name": "2025 Standard Release", "season": models.Collection.Season.SPRING, "year": 2025},
         ],
         "rojita": [
             {"name": "Waist Ribbon Design Skirt", "season": models.Collection.Season.WINTER, "year": 2025},
@@ -707,17 +722,18 @@ def _create_items(
     features: dict[str, models.Feature],
     collections: dict[str, models.Collection],
 ) -> None:
-    liz_lisa = models.Item.objects.update_or_create(
-        slug="sewing-bear-set-up",
+    acdc_rag = models.Item.objects.update_or_create(
+        slug="1115-shirt",
         defaults={
-            "brand": brands["liz-lisa"],
-            "category": categories["dress"],
-            "subcategory": subcategories.get("set-up"),
+            "brand": brands["acdc-rag"],
+            "category": categories["top"],
+            "subcategory": subcategories.get("blouse"),
             "origin_country": "JP",
+            "production_country": "CN",
             "default_language": languages["en"],
             "default_currency": currencies["JPY"],
-            "release_year": 2024,
-            "collaboration": "None",
+            "release_year": 2025,
+            "collaboration": "",
             "limited_edition": False,
             "has_matching_set": True,
             "verified_source": True,
@@ -725,16 +741,115 @@ def _create_items(
         },
     )[0]
     _add_item_details(
+        acdc_rag,
+        languages=languages,
+        colors=[colors["black"]],
+        fabrics=[(fabrics["polyester"], Decimal("100"))],
+        features=[
+            features["detachable-sleeves"],
+            features["short-sleeves"],
+            features["zipper-detail"],
+            features["button-front"],
+            features["print-graphic"],
+            features["back-vent"],
+            features["tuxedo-collar"],
+        ],
+        collections=[collections["acdc-rag:PUNK Revival 2nd"]],
+        substyles=[],
+        price_currency=currencies["JPY"],
+        price_amount=Decimal("6490"),
+        tags=[tags["print"]],
+        translation_overrides={
+            "en": {
+                "name": "1115 Shirt",
+                "description": (
+                    "[Design]\n"
+                    "Want to bring back those heart-racing moments?\n"
+                    "Dive into nostalgic-meets-fresh Harajuku punk revival!\n\n"
+                    "[Details]\n"
+                    "Fierce zip-accented punk shirt!\n"
+                    "Removable sleeves for that perfect 2-way versatility"
+                ),
+            },
+            "ja": {
+                "name": "1115シャツ",
+                "description": (
+                    "【デザイン】\n"
+                    "あの頃のトキメキをもう一度着こなしてみませんか？\n"
+                    "懐かしくて新しい原宿パンクリバイバル！\n\n"
+                    "【ディテール】\n"
+                    "ジップ使いのパンクなシャツ！\n"
+                    "袖は取り外せる2way仕様◎"
+                ),
+            },
+        },
+        secondary_prices=[(currencies["USD"], Decimal("44.00"))],
+    )
+
+    liz_lisa = models.Item.objects.update_or_create(
+        slug="sewing-bear-set-up",
+        defaults={
+            "brand": brands["liz-lisa"],
+            "category": categories["dress"],
+            "subcategory": subcategories.get("set-up"),
+            "origin_country": "JP",
+            "production_country": "CN",
+            "default_language": languages["en"],
+            "default_currency": currencies["JPY"],
+            "release_year": 2025,
+            "collaboration": "",
+            "limited_edition": False,
+            "has_matching_set": False,
+            "verified_source": True,
+            "status": models.Item.ItemStatus.PUBLISHED,
+        },
+    )[0]
+    _add_item_details(
         liz_lisa,
         languages=languages,
-        colors=[colors["pink"]],
-        fabrics=[(fabrics["cotton"], Decimal("65")), (fabrics["chiffon"], Decimal("35"))],
-        features=[features["bow"], features["lace"]],
-        collections=[collections["liz-lisa:Sewing Bear Set-Up"]],
-        substyles=[substyles["sweet"]],
+        colors=[colors["white"], colors["pink"], colors["blue"]],
+        fabrics=[(fabrics["polyester"], Decimal("100"))],
+        features=[
+            features["sailor-collar"],
+            features["long-sleeves"],
+            features["skirt-pants"],
+        ],
+        collections=[collections["liz-lisa:2025 Standard Release"]],
+        substyles=[substyles["classic"]],
         price_currency=currencies["JPY"],
-        price_amount=Decimal("28600"),
+        price_amount=Decimal("20800"),
         tags=[tags["print"]],
+        translation_overrides={
+            "en": {
+                "name": "Sewing Bear Set-Up",
+                "description": (
+                    "[Design]\n"
+                    "The original patterned set-up returns, printed with a charming motif of a handsome bear sewing.\n"
+                    "Features a sailor collar and chest ribbon as key points of the design.\n"
+                    "The bottoms are skirt pants, allowing easy coordination with blouses and versatile outfit styling.\n"
+                    "[Details]\n"
+                    "Set-up consisting of top and skirt-pants.\n"
+                    "Top features sailor collar and decorative ribbon.\n"
+                    "Skirt-pants provide both comfort and coverage for varied coordinates.\n"
+                    "Available in White, Pink, and Blue (availability may vary).\n"
+                    "Size: Free."
+                ),
+            },
+            "ja": {
+                "name": "ソーイングベア セットアップ",
+                "description": (
+                    "【デザイン】\n"
+                    "イケメンなクマが裁縫しているモチーフをプリントした、オリジナル柄セットアップが再登場。\n"
+                    "セーラーカラーと胸元のリボンがポイントです。\n"
+                    "ボトムはブラウスとも合わせやすいスカパン仕様で、幅広いコーディネートが楽しめます。\n"
+                    "【ディテール】\n"
+                    "トップスとスカパンのセットアップ。\n"
+                    "ホワイト・ピンク・ブルー展開（在庫状況は異なる場合があります）。\n"
+                    "サイズ：フリー。"
+                ),
+            },
+        },
+        secondary_prices=[(currencies["USD"], Decimal("133.00"))],
     )
 
     rojita = models.Item.objects.update_or_create(
@@ -780,30 +895,34 @@ def _add_item_details(
     price_currency: models.Currency,
     price_amount: Decimal,
     tags: list[models.Tag] | None = None,
+    translation_overrides: dict[str, dict[str, str]] | None = None,
+    secondary_prices: list[tuple[models.Currency, Decimal]] | None = None,
 ) -> None:
     translation_defaults = {
         "description": "A charming release featuring sugary motifs and ruffled trims.",
         "season": "Spring",
         "fit": "Regular",
         "length": "Knee length",
-        "occasion": "Tea party",
     }
-    models.ItemTranslation.objects.update_or_create(
-        item=item,
-        language=languages["en"],
-        defaults={
-            "name": item.slug.replace("-", " ").title(),
+    overrides = translation_overrides or {}
+    for code, language in languages.items():
+        defaults = {
+            "name": item.slug.replace("-", " ").title() if code != "ja" else "スイートドレス",
             **translation_defaults,
-        },
-    )
-    models.ItemTranslation.objects.update_or_create(
-        item=item,
-        language=languages["ja"],
-        defaults={
-            "name": "スイートドレス",  # Placeholder Japanese translation
-            **translation_defaults,
-        },
-    )
+        }
+        override_payload = overrides.get(code) if isinstance(overrides, dict) else None
+        if isinstance(override_payload, dict):
+            override_name = str(override_payload.get("name", ""))
+            if override_name.strip():
+                defaults["name"] = override_name
+            override_description = override_payload.get("description")
+            if isinstance(override_description, str) and override_description.strip():
+                defaults["description"] = override_description
+        models.ItemTranslation.objects.update_or_create(
+            item=item,
+            language=language,
+            defaults=defaults,
+        )
 
     models.ItemPrice.objects.update_or_create(
         item=item,
@@ -813,6 +932,16 @@ def _add_item_details(
             "amount": price_amount,
         },
     )
+    if secondary_prices:
+        for currency, amount in secondary_prices:
+            models.ItemPrice.objects.update_or_create(
+                item=item,
+                currency=currency,
+                source=models.ItemPrice.Source.CONVERTED,
+                defaults={
+                    "amount": amount,
+                },
+            )
 
     models.ItemVariant.objects.update_or_create(
         item=item,
@@ -827,7 +956,6 @@ def _add_item_details(
         item=item,
         defaults={
             "season": translation_defaults["season"],
-            "occasion": translation_defaults["occasion"],
             "fit": translation_defaults["fit"],
             "length": translation_defaults["length"],
         },
@@ -878,3 +1006,5 @@ def _add_item_details(
                 if item_tag.context != desired_context:
                     item_tag.context = desired_context
                     item_tag.save(update_fields=["context"])
+
+

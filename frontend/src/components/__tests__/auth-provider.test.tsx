@@ -16,13 +16,17 @@ type MockUser = {
   avatar_url: string | null;
 };
 
-vi.mock("@/lib/api", () => ({
-  login: vi.fn(),
-  loginWithGoogle: vi.fn(),
-  register: vi.fn(),
-  logout: vi.fn(),
-  getCurrentUser: vi.fn(),
-}));
+vi.mock("@/lib/api", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
+  return {
+    ...actual,
+    login: vi.fn(),
+    loginWithGoogle: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+    getCurrentUser: vi.fn(),
+  };
+});
 
 const loginMock = vi.mocked(api.login);
 const loginWithGoogleMock = vi.mocked(api.loginWithGoogle);

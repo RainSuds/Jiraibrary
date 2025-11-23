@@ -350,6 +350,7 @@ class Item(TimeStampedUUIDModel):
         blank=True,
     )
     origin_country = models.CharField(max_length=2, blank=True)
+    production_country = models.CharField(max_length=2, blank=True)
     default_language = models.ForeignKey(
         Language,
         on_delete=models.PROTECT,
@@ -384,6 +385,7 @@ class Item(TimeStampedUUIDModel):
     )
     approved_at = models.DateTimeField(null=True, blank=True)
     extra_metadata = models.JSONField(default=dict, blank=True)
+    product_number = models.CharField(max_length=64, blank=True)
 
     tags = models.ManyToManyField(Tag, through="ItemTag", related_name="items", blank=True)
     colors = models.ManyToManyField(Color, through="ItemColor", related_name="items", blank=True)
@@ -438,7 +440,6 @@ class ItemTranslation(TimeStampedUUIDModel):
     pattern = models.CharField(max_length=255, blank=True)
     fit = models.CharField(max_length=255, blank=True)
     length = models.CharField(max_length=255, blank=True)
-    occasion = models.CharField(max_length=255, blank=True)
     season = models.CharField(max_length=255, blank=True)
     lining = models.CharField(max_length=255, blank=True)
     closure_type = models.CharField(max_length=255, blank=True)
@@ -528,7 +529,6 @@ class ItemMetadata(TimeStampedUUIDModel):
     item = models.OneToOneField(Item, on_delete=models.CASCADE, related_name="metadata")
     pattern = models.CharField(max_length=64, blank=True)
     sleeve_type = models.CharField(max_length=128, blank=True)
-    occasion = models.CharField(max_length=128, blank=True)
     season = models.CharField(max_length=128, blank=True)
     fit = models.CharField(max_length=128, blank=True)
     length = models.CharField(max_length=128, blank=True)
@@ -619,6 +619,13 @@ class Image(TimeStampedUUIDModel):
     dominant_color = models.CharField(max_length=7, blank=True)
     source = models.CharField(max_length=32, blank=True)
     license = models.CharField(max_length=255, blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="uploaded_images",
+    )
 
     class Meta:
         ordering = ["-created_at"]
@@ -751,6 +758,7 @@ class ItemFavorite(TimeStampedUUIDModel):
 
 class ItemSubmission(TimeStampedUUIDModel):
     class SubmissionStatus(models.TextChoices):
+        DRAFT = "draft", _("Draft")
         PENDING = "pending", _("Pending")
         UNDER_REVIEW = "under_review", _("Under Review")
         APPROVED = "approved", _("Approved")
@@ -764,9 +772,11 @@ class ItemSubmission(TimeStampedUUIDModel):
     item_slug = models.SlugField(max_length=255, blank=True)
     title = models.CharField(max_length=255)
     brand_name = models.CharField(max_length=255)
+    brand_slug = models.SlugField(max_length=255, blank=True)
     description = models.TextField(blank=True)
     description_translations = models.JSONField(default=list, blank=True)
     reference_url = models.URLField(blank=True)
+    reference_urls = models.JSONField(default=list, blank=True)
     image_url = models.URLField(blank=True)
     tags = models.JSONField(default=list, blank=True)
     name_translations = models.JSONField(default=list, blank=True)
@@ -786,6 +796,8 @@ class ItemSubmission(TimeStampedUUIDModel):
     fabric_breakdown = models.JSONField(default=list, blank=True)
     feature_slugs = models.JSONField(default=list, blank=True)
     collection_reference = models.CharField(max_length=255, blank=True)
+    collection_proposal = models.JSONField(default=dict, blank=True)
+    size_measurements = models.JSONField(default=list, blank=True)
     price_amounts = models.JSONField(default=list, blank=True)
     origin_country = models.CharField(max_length=2, blank=True)
     production_country = models.CharField(max_length=2, blank=True)

@@ -7,6 +7,18 @@ export const API_BASE = (() => {
   return base.endsWith("/") ? base : `${base}/`;
 })();
 
+export class ApiError extends Error {
+  status: number;
+  payload?: unknown;
+
+  constructor(message: string, status: number, payload?: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
 function buildUrl(path: string, params?: QueryParams): string {
   const trimmed = path.replace(/^\/+/, "");
   const url = new URL(trimmed, API_BASE);
@@ -279,6 +291,7 @@ export type ItemSummary = {
   name: string;
   brand: BrandReference | null;
   category: { id: string; name: string } | null;
+  subcategory: { id: string; name: string; slug?: string | null } | null;
   release_year: number | null;
   has_matching_set: boolean;
   verified_source: boolean;
@@ -295,7 +308,6 @@ export type ItemTranslationPayload = {
   pattern: string;
   fit: string;
   length: string;
-  occasion: string;
   season: string;
   lining: string;
   closure_type: string;
@@ -321,7 +333,6 @@ export type ItemVariantPayload = {
 export type ItemMetadataPayload = {
   pattern: string | null;
   sleeve_type: string | null;
-  occasion: string | null;
   season: string | null;
   fit: string | null;
   length: string | null;
@@ -345,6 +356,7 @@ export type ItemSubstyleDetail = {
   id: string;
   name: string;
   slug: string;
+  style: { id: string; name: string; slug: string } | null;
   weight: string | null;
 };
 
@@ -360,6 +372,12 @@ export type ItemFeatureDetail = {
   category: string;
   is_prominent: boolean;
   notes: string;
+};
+
+export type ItemContributorSummary = {
+  id: string;
+  username: string;
+  display_name: string;
 };
 
 export type ItemListResponse = {
@@ -421,6 +439,7 @@ export type ItemDetail = {
   slug: string;
   brand: BrandReference | null;
   category: { id: string; name: string } | null;
+  subcategory: { id: string; name: string; slug?: string | null } | null;
   default_language: string | null;
   default_currency: string | null;
   release_year: number | null;
@@ -428,6 +447,10 @@ export type ItemDetail = {
   status: string;
   limited_edition: boolean;
   has_matching_set: boolean;
+  submitted_by: ItemContributorSummary | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
   metadata: ItemMetadataPayload | null;
   extra_metadata: Record<string, unknown> | null;
   translations: ItemTranslationPayload[];
@@ -530,11 +553,18 @@ export type UserProfile = {
   display_name: string;
   role: UserRole | null;
   avatar_url: string | null;
+  preferred_language: string | null;
+  preferred_currency: string | null;
 };
 
 export type AuthResponse = {
   token: string;
   user: UserProfile;
+};
+
+export type UpdateUserPreferencesPayload = {
+  preferred_language?: string | null;
+  preferred_currency?: string | null;
 };
 
 function buildAuthHeaders(token: string, extra?: HeadersInit): Headers {
@@ -551,13 +581,43 @@ function buildJsonHeaders(init?: HeadersInit): Headers {
   return headers;
 }
 
+function extractErrorMessage(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  if (
+    "detail" in payload &&
+    typeof (payload as { detail: unknown }).detail === "string" &&
+    (payload as { detail: string }).detail.trim().length > 0
+  ) {
+    return (payload as { detail: string }).detail;
+  }
+  if ("message" in payload && typeof (payload as { message: unknown }).message === "string") {
+    return (payload as { message: string }).message;
+  }
+  if (Array.isArray(payload)) {
+    return payload.map((entry) => String(entry)).join("\n");
+  }
+  return undefined;
+}
+
 async function handleJsonResponse<T>(response: Response): Promise<T> {
   if (response.status === 204) {
     return undefined as T;
   }
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(text || `Request failed with status ${response.status}`);
+    let parsed: unknown;
+    if (text) {
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = undefined;
+      }
+    }
+    const extractedMessage = parsed ? extractErrorMessage(parsed) : undefined;
+    const message = extractedMessage || text || `Request failed with status ${response.status}`;
+    throw new ApiError(message, response.status, parsed ?? text);
   }
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }
@@ -617,6 +677,18 @@ export async function getCurrentUser(token: string): Promise<UserProfile> {
   return handleJsonResponse<UserProfile>(response);
 }
 
+export async function updateUserPreferences(
+  token: string,
+  payload: UpdateUserPreferencesPayload
+): Promise<UserProfile> {
+  const response = await fetch(buildUrl("api/auth/me/"), {
+    method: "PATCH",
+    headers: buildJsonHeaders(buildAuthHeaders(token)),
+    body: JSON.stringify(payload),
+  });
+  return handleJsonResponse<UserProfile>(response);
+}
+
 export type ItemFavorite = {
   id: string;
   item: string;
@@ -657,7 +729,6 @@ export async function deleteFavorite(token: string, favoriteId: string): Promise
 export type ItemMetadataInput = {
   pattern?: string;
   sleeve_type?: string;
-  occasion?: string;
   season?: string;
   fit?: string;
   length?: string;
@@ -676,7 +747,6 @@ export type ItemTranslationInput = {
   pattern?: string;
   fit?: string;
   length?: string;
-  occasion?: string;
   season?: string;
   lining?: string;
   closure_type?: string;
@@ -968,8 +1038,10 @@ export type ItemSubmissionPayload = {
   name_translations: SubmissionNameTranslation[];
   description_translations: SubmissionDescriptionTranslation[];
   brand_name: string;
+  brand_slug: string | null;
   description: string;
   reference_url: string;
+  reference_urls: string[];
   image_url: string;
   tags: string[];
   release_year: number | null;
@@ -981,6 +1053,7 @@ export type ItemSubmissionPayload = {
   fabric_breakdown: SubmissionFabricBreakdown[];
   feature_slugs: string[];
   collection_reference: string;
+  collection_proposal: CollectionProposalPayload | Record<string, never>;
   price_amounts: SubmissionPriceAmount[];
   origin_country: string;
   production_country: string;
@@ -992,6 +1065,7 @@ export type ItemSubmissionPayload = {
   linked_item: string | null;
   created_at: string;
   updated_at: string;
+  size_measurements: SubmissionSizeMeasurement[];
 };
 
 export type SubmissionNameTranslation = {
@@ -1011,13 +1085,48 @@ export type SubmissionPriceAmount = {
   amount: string;
 };
 
+export type SubmissionSizeMeasurement = {
+  size_label: string;
+  size_category?: string;
+  unit_system: "metric" | "imperial";
+  is_one_size: boolean;
+  notes?: string;
+  measurements: Record<string, number>;
+};
+
+export type CreateSubmissionSizeMeasurementEntry = {
+  size_label: string;
+  size_category?: string;
+  unit_system: "metric" | "imperial";
+  is_one_size?: boolean;
+  notes?: string;
+  bust?: string | number;
+  waist?: string | number;
+  hip?: string | number;
+  length?: string | number;
+  sleeve_length?: string | number;
+  hem?: string | number;
+  heel_height?: string | number;
+  bag_depth?: string | number;
+};
+
+export type CollectionProposalPayload = {
+  name: string;
+  season?: string;
+  year?: number | null;
+  notes?: string;
+  brand_slug?: string | null;
+};
+
 export type CreateSubmissionPayload = {
   title: string;
   name_translations?: SubmissionNameTranslation[];
   description_translations?: SubmissionDescriptionTranslation[];
   brand_name: string;
+  brand_slug?: string | null;
   description?: string;
   reference_url?: string;
+  reference_urls?: string[];
   image_url?: string;
   tags?: string[];
   item_slug?: string;
@@ -1030,12 +1139,14 @@ export type CreateSubmissionPayload = {
   fabric_breakdown?: SubmissionFabricBreakdown[];
   feature_slugs?: string[];
   collection_reference?: string;
+  collection_proposal?: CollectionProposalPayload;
   price_amounts?: SubmissionPriceAmount[];
   origin_country?: string;
   production_country?: string;
   limited_edition?: boolean;
   has_matching_set?: boolean;
   verified_source?: boolean;
+  size_measurements?: CreateSubmissionSizeMeasurementEntry[];
 };
 
 export async function createSubmission(
@@ -1056,4 +1167,70 @@ export async function listSubmissions(token: string): Promise<ItemSubmissionPayl
     cache: "no-store",
   });
   return handleJsonResponse<ItemSubmissionPayload[]>(response);
+}
+
+export type SubmissionSummary = {
+  id: string;
+  title: string;
+  brand_name: string;
+  brand_slug: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  release_year: number | null;
+  category_slug: string | null;
+  subcategory_slug: string | null;
+  image_url: string | null;
+  reference_url: string | null;
+};
+
+export async function listMySubmissions(
+  token: string,
+  params?: { status?: string[] }
+): Promise<SubmissionSummary[]> {
+  const query: QueryParams = {};
+  if (params?.status && params.status.length > 0) {
+    query.status = params.status.join(",");
+  }
+  const response = await fetch(buildUrl("api/submissions/mine/", query), {
+    headers: buildAuthHeaders(token),
+    cache: "no-store",
+  });
+  return handleJsonResponse<SubmissionSummary[]>(response);
+}
+
+export async function getSubmissionDetail(
+  token: string,
+  submissionId: string
+): Promise<ItemSubmissionPayload> {
+  const response = await fetch(buildUrl(`api/item-submissions/${submissionId}/`), {
+    headers: buildAuthHeaders(token),
+    cache: "no-store",
+  });
+  return handleJsonResponse<ItemSubmissionPayload>(response);
+}
+
+export async function saveSubmissionDraft(
+  token: string,
+  payload: CreateSubmissionPayload,
+  draftId?: string
+): Promise<ItemSubmissionPayload> {
+  const path = draftId ? `api/submissions/drafts/${draftId}/` : "api/submissions/drafts/";
+  const method = draftId ? "PATCH" : "POST";
+  const response = await fetch(buildUrl(path), {
+    method,
+    headers: buildJsonHeaders(buildAuthHeaders(token)),
+    body: JSON.stringify(payload),
+  });
+  return handleJsonResponse<ItemSubmissionPayload>(response);
+}
+
+export async function deleteSubmissionDraft(token: string, draftId: string): Promise<void> {
+  const response = await fetch(buildUrl(`api/submissions/drafts/${draftId}/`), {
+    method: "DELETE",
+    headers: buildAuthHeaders(token),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete draft ${draftId}.`);
+  }
 }
