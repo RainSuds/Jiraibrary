@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import ImageUploadManager from "@/components/image-upload-manager";
@@ -290,7 +290,7 @@ function buildItemSlug(brandSlug: string | null, name: string): string | null {
   return `${brandSegment}-${nameSegment}`.replace(/-+/g, "-").slice(0, 120);
 }
 
-export default function AddEntryPage() {
+function AddEntryPageContent() {
   const { user, token, loading, refresh } = useAuth();
   const pageTopRef = useRef<HTMLDivElement | null>(null);
   const [form, setForm] = useState<CreateSubmissionPayload>(initialForm);
@@ -3161,5 +3161,19 @@ export default function AddEntryPage() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+export default function AddEntryPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-2xl rounded-3xl border border-rose-100 bg-white/90 p-8 text-center shadow-lg">
+          <p className="text-sm text-rose-500">Loading submission form…</p>
+        </div>
+      }
+    >
+      <AddEntryPageContent />
+    </Suspense>
   );
 }
