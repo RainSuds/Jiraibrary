@@ -990,6 +990,11 @@ class ItemFavoriteViewSet(
                 queryset = queryset.filter(slug_filter | Q(item__id=item_param))
             else:
                 queryset = queryset.filter(slug_filter)
+        status_param = request.query_params.get("status")
+        if status_param:
+            normalized_status = status_param.strip().lower()
+            if normalized_status in models.WardrobeEntry.EntryStatus.values:
+                queryset = queryset.filter(status=normalized_status)
         return queryset
 
     def create(self, request, *args, **kwargs):  # type: ignore[override]
@@ -1001,6 +1006,71 @@ class ItemFavoriteViewSet(
             item=item,
         )
         output = self.get_serializer(favorite)
+        return Response(output.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+class WardrobeEntryViewSet(
+    mixins.CreateModelMixin,
+    mixins.DestroyModelMixin,
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    serializer_class = serializers.WardrobeEntrySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+    lookup_field = "pk"
+
+    def get_queryset(self):  # type: ignore[override]
+        request = cast(Request, self.request)
+        queryset: QuerySet[models.WardrobeEntry] = (
+            models.WardrobeEntry.objects.select_related("item", "item__brand", "item__category")
+            .filter(user=request.user)
+            .order_by("-created_at")
+        )
+        item_param = request.query_params.get("item")
+        if item_param:
+            slug_filter = Q(item__slug=item_param)
+            if _is_uuid_value(item_param):
+                queryset = queryset.filter(slug_filter | Q(item__id=item_param))
+            else:
+                queryset = queryset.filter(slug_filter)
+        status_param = request.query_params.get("status")
+        if status_param:
+            normalized_status = status_param.strip().lower()
+            if normalized_status in models.WardrobeEntry.EntryStatus.values:
+                queryset = queryset.filter(status=normalized_status)
+        return queryset
+
+    def create(self, request, *args, **kwargs):  # type: ignore[override]
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        item = serializer.validated_data["item"]
+        mutable_fields = [
+            "status",
+            "note",
+            "is_public",
+            "colors",
+            "size",
+            "acquired_date",
+            "arrival_date",
+            "source",
+            "price_paid",
+            "currency",
+            "was_gift",
+        ]
+        defaults = {}
+        for field in mutable_fields:
+            if field in serializer.validated_data:
+                value = serializer.validated_data[field]
+                if field == "colors" and value is not None:
+                    value = list(value)
+                defaults[field] = value
+        entry, created = models.WardrobeEntry.objects.update_or_create(
+            user=request.user,
+            item=item,
+            defaults=defaults,
+        )
+        output = self.get_serializer(entry)
         return Response(output.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 

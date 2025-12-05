@@ -266,6 +266,16 @@ export default function NavigationBar() {
                   Profile
                 </Link>
                 <Link
+                  href="/closet"
+                  onClick={() => {
+                    cancelClose();
+                    setMenuOpen(false);
+                  }}
+                  className="rounded-xl px-3 py-1 text-left font-medium text-rose-700 transition hover:bg-rose-50 hover:text-rose-900"
+                >
+                  Closet
+                </Link>
+                <Link
                   href="/profile?panel=account"
                   onClick={() => {
                     cancelClose();

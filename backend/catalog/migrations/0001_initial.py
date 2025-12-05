@@ -573,6 +573,31 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
+            name='WardrobeEntry',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('status', models.CharField(choices=[('owned', 'Owned'), ('wishlist', 'Wishlist')], default='owned', max_length=16)),
+                ('is_public', models.BooleanField(default=False)),
+                ('note', models.TextField(blank=True)),
+                ('colors', models.JSONField(blank=True, default=list)),
+                ('size', models.CharField(blank=True, max_length=64)),
+                ('acquired_date', models.DateField(blank=True, null=True)),
+                ('arrival_date', models.DateField(blank=True, null=True)),
+                ('source', models.CharField(blank=True, max_length=255)),
+                ('price_paid', models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True)),
+                ('currency', models.CharField(blank=True, max_length=3)),
+                ('was_gift', models.BooleanField(default=False)),
+                ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='wardrobe_entries', to='catalog.item')),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='wardrobe_entries', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'ordering': ['-created_at'],
+                'unique_together': {('user', 'item')},
+            },
+        ),
+        migrations.CreateModel(
             name='ItemPrice',
             fields=[
                 ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),

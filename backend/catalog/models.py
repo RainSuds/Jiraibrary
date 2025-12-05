@@ -756,6 +756,38 @@ class ItemFavorite(TimeStampedUUIDModel):
         return f"{self.user} ❤ {self.item.slug}"
 
 
+class WardrobeEntry(TimeStampedUUIDModel):
+    class EntryStatus(models.TextChoices):
+        OWNED = "owned", _("Owned")
+        WISHLIST = "wishlist", _("Wishlist")
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="wardrobe_entries",
+    )
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="wardrobe_entries")
+    status = models.CharField(max_length=16, choices=EntryStatus.choices, default=EntryStatus.OWNED)
+    is_public = models.BooleanField(default=False)
+    note = models.TextField(blank=True)
+    colors = models.JSONField(default=list, blank=True)
+    size = models.CharField(max_length=64, blank=True)
+    acquired_date = models.DateField(null=True, blank=True)
+    arrival_date = models.DateField(null=True, blank=True)
+    source = models.CharField(max_length=255, blank=True)
+    price_paid = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    currency = models.CharField(max_length=3, blank=True)
+    was_gift = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-created_at"]
+        unique_together = ("user", "item")
+
+    def __str__(self) -> str:
+        status_label = self.get_status_display()  # type: ignore[attr-defined]
+        return f"{self.user} 👗 {self.item.slug} ({status_label})"
+
+
 class ItemSubmission(TimeStampedUUIDModel):
     class SubmissionStatus(models.TextChoices):
         DRAFT = "draft", _("Draft")

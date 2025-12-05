@@ -20,6 +20,7 @@ import {
   listWardrobeEntries,
   saveWardrobeEntry,
 } from "@/lib/api";
+import { useCurrencyOptions } from "@/lib/useCurrencyOptions";
 
 const PLACEHOLDER_IMAGE_URL = "https://placehold.co/600x800?text=Jiraibrary";
 
@@ -139,7 +140,7 @@ type WardrobeFormState = {
   status: WardrobeEntry["status"];
   note: string;
   is_public: boolean;
-  colorsText: string;
+  colors: string[];
   size: string;
   acquired_date: string;
   arrival_date: string;
@@ -156,7 +157,7 @@ function buildWardrobeFormState(entry: WardrobeEntry | null): WardrobeFormState 
     status: entry?.status ?? "owned",
     note: entry?.note ?? "",
     is_public: entry?.is_public ?? false,
-    colorsText: entry?.colors?.join(", ") ?? "",
+    colors: entry?.colors ?? [],
     size: entry?.size ?? "",
     acquired_date: entry?.acquired_date ?? "",
     arrival_date: entry?.arrival_date ?? "",
@@ -399,6 +400,61 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
   ];
   const isWishlistEntry = wardrobeForm.status === "wishlist";
   const disablePriceInputs = wardrobeForm.was_gift;
+  const { currencyOptions } = useCurrencyOptions();
+
+  const colorOptions = useMemo(() => {
+    const optionMap = new Map<string, string>();
+    item.colors.forEach((color) => {
+      const label = color.name ?? color.id;
+      if (!label) {
+        return;
+      }
+      const normalized = label.trim();
+      if (!normalized) {
+        return;
+      }
+      optionMap.set(normalized.toLowerCase(), normalized);
+    });
+    wardrobeForm.colors.forEach((color) => {
+      const normalized = color.trim();
+      if (!normalized) {
+        return;
+      }
+      const key = normalized.toLowerCase();
+      if (!optionMap.has(key)) {
+        optionMap.set(key, normalized);
+      }
+    });
+    return Array.from(optionMap.values()).map((label) => ({ value: label, label }));
+  }, [item.colors, wardrobeForm.colors]);
+
+  const sizeOptions = useMemo(() => {
+    const variantSizes = item.variants
+      .map((variant) => variant.size_descriptor?.trim())
+      .filter((value): value is string => Boolean(value));
+    const unique = Array.from(new Set(variantSizes));
+    const existing = wardrobeForm.size?.trim();
+    if (existing && !unique.includes(existing)) {
+      unique.push(existing);
+    }
+    return unique;
+  }, [item.variants, wardrobeForm.size]);
+
+  const currencySelectOptions = useMemo(() => {
+    const registry = new Map<string, { code: string; label: string }>();
+    currencyOptions.forEach((option) => registry.set(option.code, option));
+    item.prices.forEach((price) => {
+      const code = price.currency?.toUpperCase();
+      if (code && !registry.has(code)) {
+        registry.set(code, { code, label: code });
+      }
+    });
+    const current = wardrobeForm.currency?.trim().toUpperCase();
+    if (current && !registry.has(current)) {
+      registry.set(current, { code: current, label: current });
+    }
+    return Array.from(registry.values());
+  }, [currencyOptions, item.prices, wardrobeForm.currency]);
 
   useEffect(() => {
     if (!token) {
@@ -477,16 +533,24 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
     }
     setWardrobeModalSaving(true);
     setWardrobeModalError(null);
-    const colorTokens = wardrobeForm.colorsText
-      .split(",")
-      .map((color) => color.trim())
-      .filter((color) => color.length > 0);
-    const normalizedCurrency = wardrobeForm.was_gift
-      ? ""
-      : wardrobeForm.currency.trim().toUpperCase();
-    const priceValue = wardrobeForm.was_gift || wardrobeForm.price_paid.trim() === ""
-      ? null
-      : wardrobeForm.price_paid.trim();
+    const colorTokens = wardrobeForm.colors.map((color) => color.trim()).filter((color) => color.length > 0);
+    const rawPrice = wardrobeForm.price_paid.trim();
+    const hasPrice = !wardrobeForm.was_gift && rawPrice.length > 0;
+    if (hasPrice) {
+      const numericValue = Number(rawPrice);
+      if (Number.isNaN(numericValue) || numericValue < 0) {
+        setWardrobeModalError("Enter a valid price paid amount.");
+        setWardrobeModalSaving(false);
+        return;
+      }
+    }
+    const normalizedCurrency = wardrobeForm.was_gift ? "" : wardrobeForm.currency.trim().toUpperCase();
+    if (hasPrice && !normalizedCurrency) {
+      setWardrobeModalError("Select the currency used for this purchase.");
+      setWardrobeModalSaving(false);
+      return;
+    }
+    const priceValue = hasPrice ? rawPrice : null;
     const payload: Parameters<typeof saveWardrobeEntry>[1] = {
       item: item.slug,
       status: wardrobeForm.status,
@@ -956,24 +1020,49 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="flex flex-col gap-1 text-sm text-rose-500">
                   <span className="text-xs font-semibold uppercase tracking-wide text-rose-400">Colors</span>
-                  <input
-                    type="text"
-                    value={wardrobeForm.colorsText}
-                    onChange={(event) => updateWardrobeForm("colorsText", event.target.value)}
-                    placeholder="navy, cream"
-                    className="rounded-2xl border border-rose-200 px-3 py-2 text-sm text-rose-900 focus:border-rose-400 focus:outline-none"
-                  />
-                  <span className="text-[11px] text-rose-400">Comma-separated for quick filtering.</span>
+                  {colorOptions.length > 0 ? (
+                    <select
+                      multiple
+                      value={wardrobeForm.colors}
+                      onChange={(event) =>
+                        updateWardrobeForm(
+                          "colors",
+                          Array.from(event.target.selectedOptions).map((option) => option.value),
+                        )
+                      }
+                      className="rounded-2xl border border-rose-200 px-3 py-2 text-sm text-rose-900 focus:border-rose-400 focus:outline-none"
+                    >
+                      {colorOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="rounded-2xl border border-dashed border-rose-200 px-3 py-2 text-sm text-rose-400">No color data available.</p>
+                  )}
+                  {colorOptions.length > 0 ? (
+                    <span className="text-[11px] text-rose-400">Select every palette that matches this piece.</span>
+                  ) : null}
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-rose-500">
                   <span className="text-xs font-semibold uppercase tracking-wide text-rose-400">Size</span>
-                  <input
-                    type="text"
+                  <select
                     value={wardrobeForm.size}
                     onChange={(event) => updateWardrobeForm("size", event.target.value)}
-                    placeholder="JP 2 / US 0"
-                    className="rounded-2xl border border-rose-200 px-3 py-2 text-sm text-rose-900 focus:border-rose-400 focus:outline-none"
-                  />
+                    disabled={sizeOptions.length === 0}
+                    className="rounded-2xl border border-rose-200 px-3 py-2 text-sm text-rose-900 focus:border-rose-400 focus:outline-none disabled:bg-rose-50"
+                  >
+                    <option value="">{sizeOptions.length === 0 ? "No sizes available" : "Select a size"}</option>
+                    {sizeOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                  {sizeOptions.length === 0 ? (
+                    <span className="text-[11px] text-rose-400">This item doesn’t list size variants yet.</span>
+                  ) : null}
                 </label>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -1021,19 +1110,28 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
                     placeholder="0.00"
                     className="rounded-2xl border border-rose-200 px-3 py-2 text-sm text-rose-900 focus:border-rose-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-rose-50"
                   />
+                  {!disablePriceInputs ? (
+                    <span className="text-[11px] text-rose-400">Enter the amount before currency conversion.</span>
+                  ) : null}
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-rose-500">
                   <span className="text-xs font-semibold uppercase tracking-wide text-rose-400">Currency</span>
-                  <input
-                    type="text"
-                    inputMode="text"
-                    maxLength={3}
+                  <select
                     value={wardrobeForm.currency}
                     onChange={(event) => updateWardrobeForm("currency", event.target.value.toUpperCase())}
                     disabled={disablePriceInputs}
-                    placeholder="USD"
-                    className="rounded-2xl border border-rose-200 px-3 py-2 text-sm text-rose-900 uppercase focus:border-rose-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-rose-50"
-                  />
+                    className="rounded-2xl border border-rose-200 px-3 py-2 text-sm uppercase text-rose-900 focus:border-rose-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-rose-50"
+                  >
+                    <option value="">Select currency</option>
+                    {currencySelectOptions.map((option) => (
+                      <option key={option.code} value={option.code}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  {!disablePriceInputs ? (
+                    <span className="text-[11px] text-rose-400">Choose the currency you purchased in.</span>
+                  ) : null}
                 </label>
               </div>
               <div className="flex flex-wrap gap-4 text-xs text-rose-500">

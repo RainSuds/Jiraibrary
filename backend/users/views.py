@@ -101,6 +101,7 @@ class CurrentUserView(APIView):
         profile, _ = UserProfile.objects.get_or_create(user=request.user)
         validated = serializer.validated_data
         update_fields: list[str] = []
+        user_update_fields: list[str] = []
 
         if "preferred_language" in validated:
             language = validated.get("preferred_language") or ""
@@ -114,6 +115,17 @@ class CurrentUserView(APIView):
         if update_fields:
             update_fields.append("updated_at")
             profile.save(update_fields=update_fields)
+
+        if "share_owned_public" in validated:
+            request.user.share_owned_public = bool(validated.get("share_owned_public"))
+            user_update_fields.append("share_owned_public")
+
+        if "share_wishlist_public" in validated:
+            request.user.share_wishlist_public = bool(validated.get("share_wishlist_public"))
+            user_update_fields.append("share_wishlist_public")
+
+        if user_update_fields:
+            request.user.save(update_fields=user_update_fields)
 
         response_data = UserSerializer(request.user, context={"request": request}).data
         return Response(response_data)

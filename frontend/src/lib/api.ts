@@ -550,11 +550,15 @@ export type UserProfile = {
   username: string;
   email: string;
   is_staff: boolean;
+  is_superuser?: boolean;
   display_name: string;
   role: UserRole | null;
   avatar_url: string | null;
   preferred_language: string | null;
   preferred_currency: string | null;
+  share_owned_public?: boolean;
+  share_wishlist_public?: boolean;
+  auth_provider?: "password" | "google";
 };
 
 export type AuthResponse = {
@@ -565,6 +569,8 @@ export type AuthResponse = {
 export type UpdateUserPreferencesPayload = {
   preferred_language?: string | null;
   preferred_currency?: string | null;
+  share_owned_public?: boolean;
+  share_wishlist_public?: boolean;
 };
 
 function buildAuthHeaders(token: string, extra?: HeadersInit): Headers {

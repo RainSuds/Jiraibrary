@@ -345,3 +345,118 @@ class ItemFavoriteViewSetTests(APITestCase):
         self.assertEqual(len(data), 1)
         entry = data[0]
         self.assertEqual(entry["item"], self.item.slug)
+
+
+class WardrobeEntryViewSetTests(APITestCase):
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(
+            username="wardrobe",
+            email="wardrobe@example.com",
+            password="password123",
+        )
+        self.language = models.Language.objects.create(code="en", name="English")
+        self.currency = models.Currency.objects.create(code="JPY", name="Yen", symbol="¥")
+        self.category = models.Category.objects.create(name="Outerwear", slug="outerwear")
+        self.brand = models.Brand.objects.create(slug="yoake", names={"en": "Yoake"})
+        self.item = models.Item.objects.create(
+            slug="moonlit-cape",
+            brand=self.brand,
+            category=self.category,
+            default_language=self.language,
+            default_currency=self.currency,
+            status=models.Item.ItemStatus.PUBLISHED,
+        )
+        self.other_item = models.Item.objects.create(
+            slug="sunrise-dress",
+            brand=self.brand,
+            category=self.category,
+            default_language=self.language,
+            default_currency=self.currency,
+            status=models.Item.ItemStatus.PUBLISHED,
+        )
+
+    def test_create_entry_and_list(self) -> None:
+        client = cast(APIClient, self.client)
+        client.force_authenticate(user=self.user)
+        response = cast(
+            Response,
+            client.post(reverse("wardrobe-entry-list"), {"item": self.item.slug, "note": "To style"}, format="json"),
+        )
+        self.assertIn(response.status_code, (status.HTTP_200_OK, status.HTTP_201_CREATED), response.data)
+
+        list_response = cast(Response, client.get(reverse("wardrobe-entry-list")))
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK, list_response.data)
+        data = cast(list[dict[str, Any]], list_response.data)
+        self.assertEqual(len(data), 1)
+        entry = data[0]
+        self.assertEqual(entry["item"], self.item.slug)
+        self.assertEqual(entry["note"], "To style")
+
+    def test_filter_by_status(self) -> None:
+        client = cast(APIClient, self.client)
+        client.force_authenticate(user=self.user)
+        models.WardrobeEntry.objects.create(
+            user=self.user,
+            item=self.item,
+            status=models.WardrobeEntry.EntryStatus.OWNED,
+        )
+        models.WardrobeEntry.objects.create(
+            user=self.user,
+            item=self.other_item,
+            status=models.WardrobeEntry.EntryStatus.WISHLIST,
+        )
+
+        response = cast(
+            Response,
+            client.get(
+                reverse("wardrobe-entry-list"),
+                {"status": models.WardrobeEntry.EntryStatus.WISHLIST},
+            ),
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        data = cast(list[dict[str, Any]], response.data)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["status"], models.WardrobeEntry.EntryStatus.WISHLIST)
+        self.assertEqual(data[0]["item"], self.other_item.slug)
+
+    def test_currency_required_when_price_provided(self) -> None:
+        client = cast(APIClient, self.client)
+        client.force_authenticate(user=self.user)
+        response = cast(
+            Response,
+            client.post(
+                reverse("wardrobe-entry-list"),
+                {
+                    "item": self.item.slug,
+                    "price_paid": "250.00",
+                },
+                format="json",
+            ),
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        error_data = cast(dict[str, Any], response.data)
+        self.assertIn("currency", error_data)
+
+    def test_wishlist_cannot_have_acquired_date(self) -> None:
+        client = cast(APIClient, self.client)
+        client.force_authenticate(user=self.user)
+        response = cast(
+            Response,
+            client.post(
+                reverse("wardrobe-entry-list"),
+                {
+                    "item": self.item.slug,
+                    "status": models.WardrobeEntry.EntryStatus.WISHLIST,
+                    "acquired_date": "2024-05-10",
+                },
+                format="json",
+            ),
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        error_data = cast(dict[str, Any], response.data)
+        self.assertIn("acquired_date", error_data)
+
+    def test_requires_authentication(self) -> None:
+        client = cast(APIClient, self.client)
+        response = cast(Response, client.get(reverse("wardrobe-entry-list")))
+        self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))

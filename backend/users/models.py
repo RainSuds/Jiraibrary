@@ -43,6 +43,8 @@ class User(AbstractUser):
         blank=True,
         related_name="users",
     )
+    share_owned_public = models.BooleanField(default=False)
+    share_wishlist_public = models.BooleanField(default=False)
 
     REQUIRED_FIELDS = ["email"]
 

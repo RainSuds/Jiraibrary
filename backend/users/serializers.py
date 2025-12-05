@@ -16,6 +16,7 @@ class UserSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     preferred_language = serializers.SerializerMethodField()
     preferred_currency = serializers.SerializerMethodField()
+    auth_provider = serializers.SerializerMethodField()
 
     class Meta:
         model = models.User
@@ -24,11 +25,15 @@ class UserSerializer(serializers.ModelSerializer):
             "username",
             "email",
             "is_staff",
+            "is_superuser",
             "display_name",
             "role",
             "avatar_url",
             "preferred_language",
             "preferred_currency",
+            "share_owned_public",
+            "share_wishlist_public",
+            "auth_provider",
         ]
         read_only_fields = fields
 
@@ -65,10 +70,17 @@ class UserSerializer(serializers.ModelSerializer):
             return None
         return profile.preferred_currency
 
+    def get_auth_provider(self, obj: models.User) -> str:
+        if not obj.has_usable_password():
+            return "google"
+        return "password"
+
 
 class UserPreferenceSerializer(serializers.Serializer):
     preferred_language = serializers.CharField(max_length=10, required=False, allow_blank=True)
     preferred_currency = serializers.CharField(max_length=3, required=False, allow_blank=True)
+    share_owned_public = serializers.BooleanField(required=False)
+    share_wishlist_public = serializers.BooleanField(required=False)
 
     def validate_preferred_language(self, value: str) -> str:
         normalized = value.strip().lower()

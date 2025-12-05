@@ -17,6 +17,7 @@ from catalog.views import (  # type: ignore[F401]
     FeatureViewSet,
     ItemFavoriteViewSet,
     ItemSubmissionViewSet,
+    WardrobeEntryViewSet,
     SubmissionDraftViewSet,
     UserSubmissionListView,
     ImageViewSet,
@@ -45,6 +46,7 @@ router.register(r"images", ImageViewSet)
 router.register(r"languages", LanguageViewSet)
 router.register(r"currencies", CurrencyViewSet)
 router.register(r"item-favorites", ItemFavoriteViewSet, basename="item-favorite")
+router.register(r"wardrobe", WardrobeEntryViewSet, basename="wardrobe-entry")
 router.register(r"item-submissions", ItemSubmissionViewSet, basename="item-submission")
 router.register(r"submissions/drafts", SubmissionDraftViewSet, basename="submission-draft")
 
