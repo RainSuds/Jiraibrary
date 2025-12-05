@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ChangeEvent, FocusEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
+import NavigationSearch from "@/components/navigation-search";
 import {
   CurrencySummary,
   LanguageSummary,
@@ -13,6 +14,9 @@ import {
   listCurrencies,
   listLanguages,
 } from "@/lib/api";
+
+const LANGUAGE_STORAGE_KEY = "jiraibrary.guest.language";
+const CURRENCY_STORAGE_KEY = "jiraibrary.guest.currency";
 
 export default function NavigationBar() {
   const { user, logout, loading, updatePreferences } = useAuth();
@@ -72,9 +76,21 @@ export default function NavigationBar() {
   }, []);
 
   useEffect(() => {
-    setLanguageSelection(user?.preferred_language ?? "en");
-    setCurrencySelection(user?.preferred_currency ?? "USD");
-  }, [user?.preferred_currency, user?.preferred_language]);
+    if (user) {
+      setLanguageSelection(user.preferred_language ?? "en");
+      setCurrencySelection(user.preferred_currency ?? "USD");
+      return;
+    }
+    if (typeof window === "undefined") {
+      setLanguageSelection("en");
+      setCurrencySelection("USD");
+      return;
+    }
+    const storedLanguage = window.localStorage.getItem(LANGUAGE_STORAGE_KEY) ?? "en";
+    const storedCurrency = window.localStorage.getItem(CURRENCY_STORAGE_KEY) ?? "USD";
+    setLanguageSelection(storedLanguage);
+    setCurrencySelection(storedCurrency);
+  }, [user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,43 +130,36 @@ export default function NavigationBar() {
     (event: ChangeEvent<HTMLSelectElement>) => {
       const value = event.target.value;
       setLanguageSelection(value);
-      void applyPreferenceChange({ preferred_language: value });
+      if (user) {
+        void applyPreferenceChange({ preferred_language: value });
+      } else if (typeof window !== "undefined") {
+        window.localStorage.setItem(LANGUAGE_STORAGE_KEY, value);
+      }
     },
-    [applyPreferenceChange],
+    [applyPreferenceChange, user],
   );
 
   const handleCurrencyChange = useCallback(
     (event: ChangeEvent<HTMLSelectElement>) => {
       const value = event.target.value;
       setCurrencySelection(value);
-      void applyPreferenceChange({ preferred_currency: value });
+      if (user) {
+        void applyPreferenceChange({ preferred_currency: value });
+      } else if (typeof window !== "undefined") {
+        window.localStorage.setItem(CURRENCY_STORAGE_KEY, value);
+      }
     },
-    [applyPreferenceChange],
+    [applyPreferenceChange, user],
   );
 
   return (
     <header className="border-b border-rose-100/80 bg-white/75 backdrop-blur">
-      <nav className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
+      <nav className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-4 px-6 py-4 md:grid-cols-[auto_1fr] md:items-center">
         <Link href="/" className="text-lg font-semibold tracking-tight text-rose-700">
           Jiraibrary
         </Link>
-        <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-rose-600">
-          <Link href="/" className="transition hover:text-rose-800">
-            Home
-          </Link>
-          <Link href="/search" className="transition hover:text-rose-800">
-            Search
-          </Link>
-          <a
-            href="/admin/"
-            className="transition hover:text-rose-800"
-            rel="noreferrer"
-            target="_blank"
-          >
-            Admin
-          </a>
-          {user ? (
-            <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-rose-500">
+        <div className="flex w-full flex-wrap items-center gap-4 text-sm font-medium text-rose-600 md:justify-end">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-rose-500">
               <label className="sr-only" htmlFor="language-select">
                 Preferred language
               </label>
@@ -191,13 +200,9 @@ export default function NavigationBar() {
                   ))
                 )}
               </select>
-            </div>
-          ) : null}
-          {user ? (
-            <Link href="/add-entry" className="transition hover:text-rose-800">
-              Add Entry
-            </Link>
-          ) : (
+          </div>
+          <NavigationSearch className="order-last w-full md:order-none md:w-60 lg:w-72" />
+          {user ? null : (
             <Link
               href={loginHref}
               className="rounded-full border border-rose-200 px-3 py-1 text-rose-600 transition hover:border-rose-300 hover:text-rose-800"
@@ -259,6 +264,16 @@ export default function NavigationBar() {
                   className="rounded-xl px-3 py-1 text-left font-medium text-rose-700 transition hover:bg-rose-50 hover:text-rose-900"
                 >
                   Profile
+                </Link>
+                <Link
+                  href="/profile?panel=account"
+                  onClick={() => {
+                    cancelClose();
+                    setMenuOpen(false);
+                  }}
+                  className="rounded-xl px-3 py-1 text-left font-medium text-rose-700 transition hover:bg-rose-50 hover:text-rose-900"
+                >
+                  Settings
                 </Link>
                 <button
                   type="button"

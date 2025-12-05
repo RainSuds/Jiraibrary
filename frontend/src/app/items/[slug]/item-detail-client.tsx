@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import type { FormEvent, MouseEvent } from "react";
 
 import FavoriteToggle from "@/components/favorite-toggle";
 import ItemGallery from "@/components/item-gallery";
@@ -13,7 +14,11 @@ import {
   ItemPriceDetail,
   ItemSummary,
   PriceSummary,
+  WardrobeEntry,
+  deleteWardrobeEntry,
   getItemList,
+  listWardrobeEntries,
+  saveWardrobeEntry,
 } from "@/lib/api";
 
 const PLACEHOLDER_IMAGE_URL = "https://placehold.co/600x800?text=Jiraibrary";
@@ -130,14 +135,54 @@ function filterTranslations(item: ItemDetailPayload, preferredLanguage: string) 
   return entries.length > 0 ? entries : item.translations;
 }
 
+type WardrobeFormState = {
+  status: WardrobeEntry["status"];
+  note: string;
+  is_public: boolean;
+  colorsText: string;
+  size: string;
+  acquired_date: string;
+  arrival_date: string;
+  source: string;
+  price_paid: string;
+  currency: string;
+  was_gift: boolean;
+};
+
+const WARDROBE_STATUS_OPTIONS: WardrobeEntry["status"][] = ["owned", "wishlist"];
+
+function buildWardrobeFormState(entry: WardrobeEntry | null): WardrobeFormState {
+  return {
+    status: entry?.status ?? "owned",
+    note: entry?.note ?? "",
+    is_public: entry?.is_public ?? false,
+    colorsText: entry?.colors?.join(", ") ?? "",
+    size: entry?.size ?? "",
+    acquired_date: entry?.acquired_date ?? "",
+    arrival_date: entry?.arrival_date ?? "",
+    source: entry?.source ?? "",
+    price_paid: entry?.price_paid ?? "",
+    currency: entry?.currency ?? "",
+    was_gift: entry?.was_gift ?? false,
+  };
+}
+
 type ItemDetailClientProps = {
   item: ItemDetailPayload;
 };
 
 export default function ItemDetailClient({ item }: ItemDetailClientProps) {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const preferredLanguage = (user?.preferred_language ?? "en").toLowerCase();
   const preferredCurrency = (user?.preferred_currency ?? "USD").toUpperCase();
+  const isAuthenticated = Boolean(user && token);
+  const [wardrobeEntry, setWardrobeEntry] = useState<WardrobeEntry | null>(null);
+  const [wardrobeLoading, setWardrobeLoading] = useState(false);
+  const [wardrobeError, setWardrobeError] = useState<string | null>(null);
+  const [wardrobeModalOpen, setWardrobeModalOpen] = useState(false);
+  const [wardrobeForm, setWardrobeForm] = useState<WardrobeFormState>(() => buildWardrobeFormState(null));
+  const [wardrobeModalSaving, setWardrobeModalSaving] = useState(false);
+  const [wardrobeModalError, setWardrobeModalError] = useState<string | null>(null);
 
   const displayName = useMemo(() => resolveDisplayName(item, preferredLanguage), [item, preferredLanguage]);
   const visibleTranslations = useMemo(() => filterTranslations(item, preferredLanguage), [item, preferredLanguage]);
@@ -352,9 +397,157 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
       value: item.approved_at ? formatDateTime(item.approved_at) : "Pending",
     },
   ];
+  const isWishlistEntry = wardrobeForm.status === "wishlist";
+  const disablePriceInputs = wardrobeForm.was_gift;
+
+  useEffect(() => {
+    if (!token) {
+      setWardrobeEntry(null);
+      return;
+    }
+    let cancelled = false;
+    setWardrobeLoading(true);
+    setWardrobeError(null);
+    const fetchWardrobeState = async () => {
+      try {
+        const [existing] = await listWardrobeEntries(token, { item: item.slug });
+        if (!cancelled) {
+          setWardrobeEntry(existing ?? null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Failed to load wardrobe entry", error);
+          setWardrobeError("Unable to load wardrobe status right now.");
+        }
+      } finally {
+        if (!cancelled) {
+          setWardrobeLoading(false);
+        }
+      }
+    };
+    void fetchWardrobeState();
+    return () => {
+      cancelled = true;
+    };
+  }, [item.slug, token]);
+
+  const openWardrobeModal = () => {
+    if (!token) {
+      return;
+    }
+    setWardrobeForm(buildWardrobeFormState(wardrobeEntry));
+    setWardrobeModalError(null);
+    setWardrobeModalOpen(true);
+  };
+
+  const closeWardrobeModal = () => {
+    if (wardrobeModalSaving) {
+      return;
+    }
+    setWardrobeModalOpen(false);
+  };
+
+  useEffect(() => {
+    if (!wardrobeModalOpen) {
+      return undefined;
+    }
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !wardrobeModalSaving) {
+        setWardrobeModalOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeydown);
+    return () => window.removeEventListener("keydown", handleKeydown);
+  }, [wardrobeModalOpen, wardrobeModalSaving]);
+
+  const updateWardrobeForm = <Field extends keyof WardrobeFormState>(
+    field: Field,
+    value: WardrobeFormState[Field],
+  ) => {
+    setWardrobeForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleWardrobeFormSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!token) {
+      return;
+    }
+    setWardrobeModalSaving(true);
+    setWardrobeModalError(null);
+    const colorTokens = wardrobeForm.colorsText
+      .split(",")
+      .map((color) => color.trim())
+      .filter((color) => color.length > 0);
+    const normalizedCurrency = wardrobeForm.was_gift
+      ? ""
+      : wardrobeForm.currency.trim().toUpperCase();
+    const priceValue = wardrobeForm.was_gift || wardrobeForm.price_paid.trim() === ""
+      ? null
+      : wardrobeForm.price_paid.trim();
+    const payload: Parameters<typeof saveWardrobeEntry>[1] = {
+      item: item.slug,
+      status: wardrobeForm.status,
+      note: wardrobeForm.note.trim(),
+      is_public: wardrobeForm.is_public,
+      colors: colorTokens,
+      size: wardrobeForm.size.trim(),
+      acquired_date:
+        wardrobeForm.status === "owned" && wardrobeForm.acquired_date ? wardrobeForm.acquired_date : null,
+      arrival_date:
+        wardrobeForm.status === "owned" && wardrobeForm.arrival_date ? wardrobeForm.arrival_date : null,
+      source: wardrobeForm.source.trim(),
+      price_paid: priceValue,
+      currency: normalizedCurrency,
+      was_gift: wardrobeForm.was_gift,
+    } as const;
+    try {
+      const saved = await saveWardrobeEntry(token, payload);
+      setWardrobeEntry(saved);
+      setWardrobeError(null);
+      setWardrobeModalOpen(false);
+    } catch (error) {
+      console.error("Failed to save wardrobe entry", error);
+      setWardrobeModalError("Unable to save this wardrobe entry.");
+    } finally {
+      setWardrobeModalSaving(false);
+    }
+  };
+
+  const handleWardrobeDelete = async () => {
+    if (!token || !wardrobeEntry) {
+      return;
+    }
+    setWardrobeModalSaving(true);
+    setWardrobeModalError(null);
+    try {
+      await deleteWardrobeEntry(token, wardrobeEntry.id);
+      setWardrobeEntry(null);
+      setWardrobeError(null);
+      setWardrobeModalOpen(false);
+    } catch (error) {
+      console.error("Failed to remove wardrobe entry", error);
+      setWardrobeModalError("Unable to remove this item from your wardrobe.");
+    } finally {
+      setWardrobeModalSaving(false);
+    }
+  };
+
+  const handleModalBackgroundClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      closeWardrobeModal();
+    }
+  };
 
   return (
     <div className="flex flex-col gap-10">
+      {!isAuthenticated ? (
+        <div className="rounded-3xl border border-rose-100 bg-white/80 px-6 py-4 text-sm text-rose-600">
+          You are not logged in. <Link href="/login" className="font-semibold text-rose-700 underline">Log in</Link> to save this item to your wardrobe.
+        </div>
+      ) : null}
       <nav className="flex flex-wrap items-center gap-2 text-sm text-rose-500">
         <Link href="/" className="transition hover:text-rose-800">
           Home
@@ -382,11 +575,8 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
         <div className="flex flex-wrap items-center gap-4">
           <h1 className="text-4xl font-semibold tracking-tight text-rose-900">{displayName}</h1>
           {primaryPrice ? (
-            <span className="rounded-full bg-rose-600 px-4 py-1 text-sm font-medium text-white">
-              {primaryPrice}
-            </span>
+            <span className="rounded-full bg-rose-600 px-4 py-1 text-sm font-medium text-white">{primaryPrice}</span>
           ) : null}
-          <FavoriteToggle itemSlug={item.slug} />
         </div>
         <div className="flex flex-wrap gap-2">
           {item.brand ? (
@@ -438,27 +628,56 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
             </div>
           ) : null}
 
-          {visibleTranslations.length > 0 ? (
-            <div className="flex flex-col gap-4">
-              <h2 className="text-lg font-semibold text-rose-900">Description</h2>
-              <ul className="flex flex-col gap-3">
-                {visibleTranslations.map((translation) => (
-                  <li
-                    key={`${translation.language}-${translation.name}`}
-                    className="rounded-2xl border border-rose-100 bg-white/90 p-4 shadow-sm"
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-rose-100 bg-white/90 p-4 shadow-sm">
+                {isAuthenticated ? (
+                  <button
+                    type="button"
+                    onClick={openWardrobeModal}
+                    disabled={wardrobeLoading}
+                    className={`rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      wardrobeEntry
+                        ? "border-emerald-200 bg-emerald-600"
+                        : "border-rose-200 bg-rose-900/90 hover:bg-rose-900"
+                    }`}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-sm font-semibold text-rose-900">{translation.name}</span>
-                      <span className="text-xs uppercase tracking-wide text-rose-400">{translation.language}</span>
-                    </div>
-                    {translation.description ? (
-                      <p className="mt-2 text-sm text-rose-500">{translation.description}</p>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
+                    {wardrobeLoading ? "Loading…" : wardrobeEntry ? "In wardrobe" : "Add to wardrobe"}
+                  </button>
+                ) : (
+                  <Link
+                    href={`/login?next=${encodeURIComponent(`/items/${item.slug}`)}`}
+                    className="rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-rose-600 transition hover:border-rose-300 hover:text-rose-800"
+                  >
+                    Log in to save
+                  </Link>
+                )}
+                <FavoriteToggle itemSlug={item.slug} />
+              </div>
+              {wardrobeError ? <p className="text-xs text-rose-500">{wardrobeError}</p> : null}
             </div>
-          ) : null}
+            {visibleTranslations.length > 0 ? (
+              <div className="flex flex-col gap-4">
+                <h2 className="text-lg font-semibold text-rose-900">Description</h2>
+                <ul className="flex flex-col gap-3">
+                  {visibleTranslations.map((translation) => (
+                    <li
+                      key={`${translation.language}-${translation.name}`}
+                      className="rounded-2xl border border-rose-100 bg-white/90 p-4 shadow-sm"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-semibold text-rose-900">{translation.name}</span>
+                        <span className="text-xs uppercase tracking-wide text-rose-400">{translation.language}</span>
+                      </div>
+                      {translation.description ? (
+                        <p className="mt-2 text-sm text-rose-500">{translation.description}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
 
           {relatedItems.length > 0 || relatedLoading ? (
             <div className="flex flex-col gap-4">
@@ -676,6 +895,211 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
 
         </aside>
       </section>
+      {isAuthenticated && wardrobeModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-rose-950/40 px-4 py-8"
+          role="dialog"
+          aria-modal="true"
+          onClick={handleModalBackgroundClick}
+        >
+          <div className="w-full max-w-2xl rounded-3xl border border-rose-100 bg-white p-6 shadow-2xl" role="document">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-rose-400">Wardrobe entry</p>
+                <h3 className="text-xl font-semibold text-rose-900">{displayName}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={closeWardrobeModal}
+                disabled={wardrobeModalSaving}
+                className="rounded-full border border-rose-200 p-2 text-rose-500 transition hover:border-rose-300 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label="Close wardrobe dialog"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="mt-2 text-sm text-rose-500">
+              {wardrobeEntry
+                ? "Update how you'd like to track this item in your wardrobe or wishlist."
+                : "Add context so future-you remembers how you plan to find or style this piece."}
+            </p>
+            {isWishlistEntry ? (
+              <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-rose-400">Wishlist entries skip acquisition details.</p>
+            ) : null}
+            <form className="mt-6 space-y-5" onSubmit={handleWardrobeFormSubmit}>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-rose-400">Status</p>
+                <div className="mt-3 flex flex-wrap gap-3">
+                  {WARDROBE_STATUS_OPTIONS.map((status) => {
+                    const isSelected = wardrobeForm.status === status;
+                    return (
+                      <label
+                        key={status}
+                        className={`flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-wide transition ${
+                          isSelected ? "border-rose-400 bg-rose-50 text-rose-900" : "border-rose-200 text-rose-500"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="wardrobe-status"
+                          value={status}
+                          className="sr-only"
+                          checked={isSelected}
+                          onChange={() => updateWardrobeForm("status", status)}
+                        />
+                        {status === "owned" ? "Owned" : "Wishlist"}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-sm text-rose-500">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-rose-400">Colors</span>
+                  <input
+                    type="text"
+                    value={wardrobeForm.colorsText}
+                    onChange={(event) => updateWardrobeForm("colorsText", event.target.value)}
+                    placeholder="navy, cream"
+                    className="rounded-2xl border border-rose-200 px-3 py-2 text-sm text-rose-900 focus:border-rose-400 focus:outline-none"
+                  />
+                  <span className="text-[11px] text-rose-400">Comma-separated for quick filtering.</span>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-rose-500">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-rose-400">Size</span>
+                  <input
+                    type="text"
+                    value={wardrobeForm.size}
+                    onChange={(event) => updateWardrobeForm("size", event.target.value)}
+                    placeholder="JP 2 / US 0"
+                    className="rounded-2xl border border-rose-200 px-3 py-2 text-sm text-rose-900 focus:border-rose-400 focus:outline-none"
+                  />
+                </label>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-sm text-rose-500">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-rose-400">Acquired date</span>
+                  <input
+                    type="date"
+                    value={wardrobeForm.acquired_date}
+                    onChange={(event) => updateWardrobeForm("acquired_date", event.target.value)}
+                    disabled={isWishlistEntry}
+                    className="rounded-2xl border border-rose-200 px-3 py-2 text-sm text-rose-900 focus:border-rose-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-rose-50"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-rose-500">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-rose-400">Arrival date</span>
+                  <input
+                    type="date"
+                    value={wardrobeForm.arrival_date}
+                    onChange={(event) => updateWardrobeForm("arrival_date", event.target.value)}
+                    disabled={isWishlistEntry}
+                    className="rounded-2xl border border-rose-200 px-3 py-2 text-sm text-rose-900 focus:border-rose-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-rose-50"
+                  />
+                </label>
+              </div>
+              <label className="flex flex-col gap-1 text-sm text-rose-500">
+                <span className="text-xs font-semibold uppercase tracking-wide text-rose-400">Source / store</span>
+                <input
+                  type="text"
+                  value={wardrobeForm.source}
+                  onChange={(event) => updateWardrobeForm("source", event.target.value)}
+                  placeholder="Secondhand via Closet Child"
+                  className="rounded-2xl border border-rose-200 px-3 py-2 text-sm text-rose-900 focus:border-rose-400 focus:outline-none"
+                />
+              </label>
+              <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
+                <label className="flex flex-col gap-1 text-sm text-rose-500">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-rose-400">Price paid</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={wardrobeForm.price_paid}
+                    onChange={(event) => updateWardrobeForm("price_paid", event.target.value)}
+                    disabled={disablePriceInputs}
+                    placeholder="0.00"
+                    className="rounded-2xl border border-rose-200 px-3 py-2 text-sm text-rose-900 focus:border-rose-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-rose-50"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-rose-500">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-rose-400">Currency</span>
+                  <input
+                    type="text"
+                    inputMode="text"
+                    maxLength={3}
+                    value={wardrobeForm.currency}
+                    onChange={(event) => updateWardrobeForm("currency", event.target.value.toUpperCase())}
+                    disabled={disablePriceInputs}
+                    placeholder="USD"
+                    className="rounded-2xl border border-rose-200 px-3 py-2 text-sm text-rose-900 uppercase focus:border-rose-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-rose-50"
+                  />
+                </label>
+              </div>
+              <div className="flex flex-wrap gap-4 text-xs text-rose-500">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={wardrobeForm.was_gift}
+                    onChange={(event) => updateWardrobeForm("was_gift", event.target.checked)}
+                    className="rounded border-rose-300 text-rose-600 focus:ring-rose-500"
+                  />
+                  Mark as gift
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={wardrobeForm.is_public}
+                    onChange={(event) => updateWardrobeForm("is_public", event.target.checked)}
+                    className="rounded border-rose-300 text-rose-600 focus:ring-rose-500"
+                  />
+                  Share this entry publicly
+                </label>
+              </div>
+              <label className="flex flex-col gap-1 text-sm text-rose-500">
+                <span className="text-xs font-semibold uppercase tracking-wide text-rose-400">Notes</span>
+                <textarea
+                  rows={4}
+                  value={wardrobeForm.note}
+                  onChange={(event) => updateWardrobeForm("note", event.target.value)}
+                  placeholder="How you plan to style, hunt, or track this piece."
+                  className="rounded-2xl border border-rose-200 px-3 py-2 text-sm text-rose-900 focus:border-rose-400 focus:outline-none"
+                />
+              </label>
+              {wardrobeModalError ? (
+                <p className="text-sm font-semibold text-rose-600">{wardrobeModalError}</p>
+              ) : null}
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="submit"
+                  disabled={wardrobeModalSaving}
+                  className="rounded-full bg-rose-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {wardrobeModalSaving ? "Saving…" : wardrobeEntry ? "Save changes" : "Add to wardrobe"}
+                </button>
+                {wardrobeEntry ? (
+                  <button
+                    type="button"
+                    onClick={handleWardrobeDelete}
+                    disabled={wardrobeModalSaving}
+                    className="rounded-full border border-rose-200 px-5 py-2 text-sm font-semibold text-rose-600 transition hover:border-rose-300 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Remove entry
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={closeWardrobeModal}
+                  disabled={wardrobeModalSaving}
+                  className="rounded-full border border-rose-200 px-5 py-2 text-sm font-semibold text-rose-600 transition hover:border-rose-300 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

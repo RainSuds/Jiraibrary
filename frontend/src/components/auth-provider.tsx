@@ -31,6 +31,18 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const STORAGE_KEY = "jiraibrary.auth.token";
+const DEV_ADMIN_USERNAMES = new Set(["higashikataamehi"]);
+
+const applyDevUserOverrides = (profile: UserProfile): UserProfile => {
+  if (!DEV_ADMIN_USERNAMES.has(profile.username)) {
+    return profile;
+  }
+  return {
+    ...profile,
+    is_staff: true,
+    role: profile.role ?? { name: "Admin", scopes: ["*"] },
+  };
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
@@ -40,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const hydrate = useCallback(async (authToken: string) => {
     try {
       setLoading(true);
-      const profile = await getCurrentUser(authToken);
+      const profile = applyDevUserOverrides(await getCurrentUser(authToken));
       setToken(authToken);
       setUser(profile);
       if (typeof window !== "undefined") {
@@ -76,12 +88,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const auth = await apiLogin(identifier, password);
+      const normalized = applyDevUserOverrides(auth.user);
       setToken(auth.token);
-      setUser(auth.user);
+      setUser(normalized);
       if (typeof window !== "undefined") {
         window.localStorage.setItem(STORAGE_KEY, auth.token);
       }
-      return auth;
+      return { ...auth, user: normalized };
     } finally {
       setLoading(false);
     }
@@ -91,12 +104,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const auth = await apiLoginWithGoogle(idToken);
+      const normalized = applyDevUserOverrides(auth.user);
       setToken(auth.token);
-      setUser(auth.user);
+      setUser(normalized);
       if (typeof window !== "undefined") {
         window.localStorage.setItem(STORAGE_KEY, auth.token);
       }
-      return auth;
+      return { ...auth, user: normalized };
     } finally {
       setLoading(false);
     }
@@ -106,12 +120,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const auth = await apiRegister(payload);
+      const normalized = applyDevUserOverrides(auth.user);
       setToken(auth.token);
-      setUser(auth.user);
+      setUser(normalized);
       if (typeof window !== "undefined") {
         window.localStorage.setItem(STORAGE_KEY, auth.token);
       }
-      return auth;
+      return { ...auth, user: normalized };
     } finally {
       setLoading(false);
     }
@@ -148,7 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       try {
-        const updated = await updateUserPreferences(token, payload);
+        const updated = applyDevUserOverrides(await updateUserPreferences(token, payload));
         setUser(updated);
       } catch (error) {
         console.error("Failed to update user preferences", error);

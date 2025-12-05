@@ -696,6 +696,25 @@ export type ItemFavorite = {
   created_at: string;
 };
 
+export type WardrobeEntry = {
+  id: string;
+  item: string;
+  item_detail: ItemSummary;
+  status: "owned" | "wishlist";
+  is_public: boolean;
+  created_at: string;
+  updated_at: string;
+  note: string;
+  colors: string[];
+  size: string;
+  acquired_date: string | null;
+  arrival_date: string | null;
+  source: string;
+  price_paid: string | null;
+  currency: string | null;
+  was_gift: boolean;
+};
+
 export async function listFavorites(token: string, params?: { item?: string }): Promise<ItemFavorite[]> {
   const response = await fetch(
     buildUrl("api/item-favorites/", params?.item ? { item: params.item } : undefined),
@@ -723,6 +742,58 @@ export async function deleteFavorite(token: string, favoriteId: string): Promise
   });
   if (!response.ok && response.status !== 204) {
     throw new Error(`Failed to remove favorite (${response.status})`);
+  }
+}
+
+export async function listWardrobeEntries(
+  token: string,
+  params?: { item?: string; status?: WardrobeEntry["status"] }
+): Promise<WardrobeEntry[]> {
+  const query: Record<string, string> = {};
+  if (params?.item) {
+    query.item = params.item;
+  }
+  if (params?.status) {
+    query.status = params.status;
+  }
+  const response = await fetch(buildUrl("api/wardrobe/", Object.keys(query).length ? query : undefined), {
+    headers: buildAuthHeaders(token),
+    cache: "no-store",
+  });
+  return handleJsonResponse<WardrobeEntry[]>(response);
+}
+
+type SaveWardrobePayload = {
+  item: string;
+  status?: WardrobeEntry["status"];
+  note?: string;
+  is_public?: boolean;
+  colors?: string[];
+  size?: string;
+  acquired_date?: string | null;
+  arrival_date?: string | null;
+  source?: string;
+  price_paid?: string | null;
+  currency?: string | null;
+  was_gift?: boolean;
+};
+
+export async function saveWardrobeEntry(token: string, payload: SaveWardrobePayload): Promise<WardrobeEntry> {
+  const response = await fetch(buildUrl("api/wardrobe/"), {
+    method: "POST",
+    headers: buildJsonHeaders(buildAuthHeaders(token)),
+    body: JSON.stringify(payload),
+  });
+  return handleJsonResponse<WardrobeEntry>(response);
+}
+
+export async function deleteWardrobeEntry(token: string, entryId: string): Promise<void> {
+  const response = await fetch(buildUrl(`api/wardrobe/${encodeURIComponent(entryId)}/`), {
+    method: "DELETE",
+    headers: buildAuthHeaders(token),
+  });
+  if (!response.ok && response.status !== 204 && response.status !== 404) {
+    throw new Error(`Failed to remove wardrobe entry (${response.status})`);
   }
 }
 
