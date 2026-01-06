@@ -13,6 +13,7 @@ export const runtime = "nodejs";
 
 type LoginPayload = {
   identifier?: string;
+  email?: string;
   username?: string;
   password?: string;
 };
@@ -32,7 +33,8 @@ function backendBaseUrl(): string {
 export async function POST(request: Request) {
   try {
     const payload = (await request.json()) as LoginPayload;
-    const identifier = (payload.identifier ?? payload.username ?? "").trim();
+    const rawIdentifier = (payload.email ?? payload.identifier ?? payload.username ?? "").trim();
+    const identifier = rawIdentifier.includes("@") ? rawIdentifier.toLowerCase() : rawIdentifier;
     const password = payload.password ?? "";
 
     if (!identifier || !password) {
@@ -85,7 +87,28 @@ export async function POST(request: Request) {
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
+    const name =
+      error && typeof error === "object" && "name" in error ? String((error as { name?: unknown }).name) : "";
     const message = error instanceof Error ? error.message : "Login failed";
+
+    if (name === "UserNotConfirmedException") {
+      return NextResponse.json(
+        {
+          error: "Account not verified. Please check your email for the confirmation code.",
+          code: "USER_NOT_CONFIRMED",
+          nextStep: "CONFIRM_SIGN_UP",
+        },
+        { status: 409 }
+      );
+    }
+
+    if (name === "NotAuthorizedException" || name === "UserNotFoundException") {
+      return NextResponse.json(
+        { error: "Invalid email or password.", code: "INVALID_CREDENTIALS" },
+        { status: 401 }
+      );
+    }
+
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

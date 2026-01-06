@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from functools import lru_cache
 import logging
 from typing import Any, cast
 import uuid
@@ -33,6 +34,21 @@ from .serializers import (
 
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=8)
+def _get_pyjwt_jwk_client(jwks_url: str) -> jwt.PyJWKClient:
+    """Return a cached PyJWT JWK client.
+
+    Creating a new client per request can be slow and may re-fetch JWKS.
+    We also apply a short timeout when supported by the installed PyJWT.
+    """
+
+    try:
+        # PyJWT >= 2.8 supports a `timeout` kwarg for JWKS fetch.
+        return jwt.PyJWKClient(jwks_url, timeout=5)
+    except TypeError:
+        return jwt.PyJWKClient(jwks_url)
 
 
 def _claim_is_true(value: Any) -> bool:
@@ -132,7 +148,7 @@ def _verify_cognito_id_token(id_token: str) -> dict[str, Any]:
     issuer = f"https://cognito-idp.{region}.amazonaws.com/{user_pool_id}"
     jwks_url = f"{issuer}/.well-known/jwks.json"
 
-    jwk_client = jwt.PyJWKClient(jwks_url)
+    jwk_client = _get_pyjwt_jwk_client(jwks_url)
     signing_key = jwk_client.get_signing_key_from_jwt(id_token)
 
     decoded = jwt.decode(

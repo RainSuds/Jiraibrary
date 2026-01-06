@@ -79,7 +79,7 @@ python manage.py runserver 0.0.0.0:8000
 Backend env templates:
 
 - `backend/.env.local` (local dev config; not committed)
-- `backend/.env.prod.example` (deployment template; inject via App Runner env/secrets)
+- `backend/.env.example` (template; copy to `.env.local` for local dev)
 
 ### Frontend
 
@@ -111,9 +111,9 @@ Jiraibrary can use an Amazon Cognito User Pool for signup/login, while the Djang
 ### Frontend env vars
 
 - `NEXT_PUBLIC_AUTH_PROVIDER=cognito`
-- `COGNITO_REGION=1`
-- `COGNITO_USER_POOL_CLIENT_ID=...`
-- `COGNITO_USER_POOL_CLIENT_SECRET=...` (optional; only if your app client has a secret)
+- `NEXT_PUBLIC_COGNITO_REGION=...`
+- `NEXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID=...`
+- Do **not** set any `*_CLIENT_SECRET` variables when using a Cognito **SPA app client without a secret**.
 - `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000` (already used; required for token exchange)
 
 ### Backend env vars

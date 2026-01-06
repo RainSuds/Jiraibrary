@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
+import { ApiError } from "@/lib/api";
 import { API_BASE } from "@/lib/api";
 
 const PKCE_VERIFIER_KEY_PREFIX = "jiraibrary.pkce.verifier.";
@@ -134,22 +135,63 @@ export default function LoginPage() {
     setPending(true);
     try {
       if (mode === "login") {
+        const normalizedEmail = identifier.trim().toLowerCase();
+        if (authProvider === "cognito" && (!normalizedEmail || !normalizedEmail.includes("@"))) {
+          throw new Error("Please enter the email you used to sign up.");
+        }
+
         if (authProvider === "cognito") {
+          if (cognitoConfirmationRequired) {
+            const loginEmail = normalizedEmail;
+            const signupUsername = cognitoSignupUsername || (await cognitoUsernameFromEmail(loginEmail));
+            if (!cognitoSignupUsername) {
+              setCognitoSignupUsername(signupUsername);
+            }
+            const confirmResponse = await fetch("/api/auth/cognito/confirm", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              body: JSON.stringify({ username: signupUsername, code: cognitoConfirmationCode }),
+            });
+            const confirmPayload = (await confirmResponse.json()) as { success?: boolean; error?: string };
+            if (!confirmResponse.ok) {
+              throw new Error(confirmPayload.error || "Unable to confirm your account. Please try again.");
+            }
+            setCognitoConfirmationRequired(false);
+            setCognitoConfirmationCode("");
+          }
+
           try {
-            await login(identifier, password);
+            await login(normalizedEmail || identifier, password);
             router.push(nextRoute);
             return;
           } catch (err) {
+            if (err instanceof ApiError) {
+              const payload = err.payload;
+              if (
+                payload &&
+                typeof payload === "object" &&
+                "code" in payload &&
+                (payload as { code?: unknown }).code === "USER_NOT_CONFIRMED"
+              ) {
+                setCognitoConfirmationRequired(true);
+                setCognitoConfirmationCode("");
+                setCognitoSignupUsername("");
+                throw new Error(
+                  "Your account isn't verified yet. Enter the confirmation code from your email, or resend it."
+                );
+              }
+            }
+
             const message = err instanceof Error ? err.message : String(err);
             // If this Cognito app client doesn't allow USER_PASSWORD_AUTH, fall back to Hosted UI.
             if (message.toLowerCase().includes("user_password_auth") || message.toLowerCase().includes("flow not enabled")) {
-              await startCognitoHostedLogin(identifier);
+              await startCognitoHostedLogin(normalizedEmail || identifier);
               return;
             }
             throw err;
           }
         }
-        await login(identifier, password);
+        await login(normalizedEmail || identifier, password);
       } else {
         if (registerPassword !== registerConfirmPassword) {
           throw new Error("Passwords do not match.");
@@ -304,7 +346,7 @@ export default function LoginPage() {
     setError(null);
     setPending(true);
     try {
-      const normalizedEmail = registerEmail.trim().toLowerCase();
+      const normalizedEmail = (mode === "login" ? identifier : registerEmail).trim().toLowerCase();
       if (!normalizedEmail) {
         throw new Error("Email is required.");
       }
@@ -313,15 +355,25 @@ export default function LoginPage() {
         setCognitoSignupUsername(signupUsername);
       }
 
-      const response = await fetch("/api/auth/cognito/resend", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ username: signupUsername }),
-      });
-      const payload = (await response.json()) as { success?: boolean; error?: string };
+      const attempt = async (username: string) => {
+        const response = await fetch("/api/auth/cognito/resend", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ username }),
+        });
+        const payload = (await response.json()) as { success?: boolean; error?: string };
+        return { response, payload };
+      };
+
+      let { response, payload } = await attempt(signupUsername);
+      if (!response.ok) {
+        // Some Cognito setups allow using the email alias directly.
+        ({ response, payload } = await attempt(normalizedEmail));
+      }
       if (!response.ok) {
         throw new Error(payload.error || "Unable to resend confirmation code.");
       }
+
       setError("Confirmation code resent. Check your email.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to resend confirmation code.");
@@ -342,6 +394,9 @@ export default function LoginPage() {
           onClick={() => {
             setMode((current) => (current === "login" ? "register" : "login"));
             setError(null);
+            setCognitoConfirmationRequired(false);
+            setCognitoConfirmationCode("");
+            setCognitoSignupUsername("");
           }}
         >
           {mode === "login" ? "Need an account? Register" : "Already registered? Login"}
@@ -356,13 +411,14 @@ export default function LoginPage() {
         {mode === "login" ? (
           <>
             <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
-              Username or email
+              Email
               <input
+                type="email"
                 className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
                 value={identifier}
                 onChange={(event) => setIdentifier(event.target.value)}
                 required
-                autoComplete="username"
+                autoComplete="email"
               />
             </label>
             <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
@@ -376,6 +432,31 @@ export default function LoginPage() {
                 autoComplete="current-password"
               />
             </label>
+
+            {authProvider === "cognito" && cognitoConfirmationRequired ? (
+              <div className="flex flex-col gap-2">
+                <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
+                  Confirmation code
+                  <input
+                    className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
+                    value={cognitoConfirmationCode}
+                    onChange={(event) => setCognitoConfirmationCode(event.target.value)}
+                    placeholder="Check your email"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    required
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={pending || loading}
+                  onClick={() => void resendCognitoConfirmationCode()}
+                  className="self-start text-xs font-semibold text-rose-500 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Resend code
+                </button>
+              </div>
+            ) : null}
           </>
         ) : (
           <>
