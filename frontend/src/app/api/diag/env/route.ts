@@ -31,14 +31,22 @@ export async function GET() {
     COGNITO_USER_POOL_CLIENT_ID: reportValue(getEnv("COGNITO_USER_POOL_CLIENT_ID"), { includeSuffix: true }),
     COGNITO_APP_CLIENT_ID: reportValue(getEnv("COGNITO_APP_CLIENT_ID"), { includeSuffix: true }),
     COGNITO_CLIENT_ID: reportValue(getEnv("COGNITO_CLIENT_ID"), { includeSuffix: true }),
-    NEXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID: reportValue(getEnv("NEXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID"), {
+    // For NEXT_PUBLIC_* variables, dynamic lookup (process.env[name]) often fails on Amplify because
+    // Next.js only inlines NEXT_PUBLIC_* for static property access. Report both.
+    NEXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID: reportValue(process.env.NEXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID, {
       includeSuffix: true,
     }),
+    NEXT_PUBLIC_COGNITO_REGION: reportValue(process.env.NEXT_PUBLIC_COGNITO_REGION, { includeSuffix: true }),
+    NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN: reportValue(process.env.NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN, {
+      includeSuffix: true,
+    }),
+    NEXT_PUBLIC_API_BASE_URL: reportValue(process.env.NEXT_PUBLIC_API_BASE_URL, { includeSuffix: true }),
     COGNITO_HOSTED_UI_DOMAIN: reportValue(getEnv("COGNITO_HOSTED_UI_DOMAIN"), { includeSuffix: true }),
     COGNITO_DOMAIN: reportValue(getEnv("COGNITO_DOMAIN"), { includeSuffix: true }),
     COGNITO_REDIRECT_URI: reportValue(getEnv("COGNITO_REDIRECT_URI"), { includeSuffix: true }),
-    NEXT_PUBLIC_COGNITO_REDIRECT_URI: reportValue(getEnv("NEXT_PUBLIC_COGNITO_REDIRECT_URI"), { includeSuffix: true }),
-    NEXT_PUBLIC_API_BASE_URL: reportValue(getEnv("NEXT_PUBLIC_API_BASE_URL"), { includeSuffix: true }),
+    NEXT_PUBLIC_COGNITO_REDIRECT_URI: reportValue(process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI, {
+      includeSuffix: true,
+    }),
 
     // Secrets: only presence/length, no suffix.
     COGNITO_USER_POOL_CLIENT_SECRET: reportValue(getEnv("COGNITO_USER_POOL_CLIENT_SECRET")),

@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { getEnv, requireEnvAny } from "@/lib/server/env";
+import { getEnv } from "@/lib/server/env";
+import {
+  getCognitoClientId,
+  getCognitoClientSecret,
+  getCognitoHostedUiDomain,
+  getCognitoRedirectUri,
+} from "@/lib/server/cognito-env";
 
 export const runtime = "nodejs";
 
@@ -10,15 +16,7 @@ type TokenExchangePayload = {
 };
 
 function hostedUiBaseUrl(): string {
-  const raw = requireEnvAny(
-    [
-      "COGNITO_HOSTED_UI_DOMAIN",
-      "COGNITO_DOMAIN",
-      "NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN",
-      "NEXT_PUBLIC_COGNITO_DOMAIN",
-    ],
-    "COGNITO_HOSTED_UI_DOMAIN"
-  );
+  const raw = getCognitoHostedUiDomain();
   const withScheme = raw.startsWith("http://") || raw.startsWith("https://")
     ? raw
     : `https://${raw}`;
@@ -40,7 +38,7 @@ function backendBaseUrl(): string {
 }
 
 function resolveRedirectUri(origin: string): string {
-  const configured = getEnv("COGNITO_REDIRECT_URI") ?? getEnv("NEXT_PUBLIC_COGNITO_REDIRECT_URI");
+  const configured = getCognitoRedirectUri();
   if (configured) {
     return configured;
   }
@@ -57,21 +55,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing code or code_verifier" }, { status: 400 });
     }
 
-    const clientId = requireEnvAny(
-      [
-        "COGNITO_USER_POOL_CLIENT_ID",
-        "COGNITO_APP_CLIENT_ID",
-        "COGNITO_CLIENT_ID",
-        "NEXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID",
-        "NEXT_PUBLIC_COGNITO_APP_CLIENT_ID",
-        "NEXT_PUBLIC_COGNITO_CLIENT_ID",
-      ],
-      "COGNITO_USER_POOL_CLIENT_ID"
-    );
-    const clientSecret =
-      getEnv("COGNITO_USER_POOL_CLIENT_SECRET") ??
-      getEnv("COGNITO_CLIENT_SECRET") ??
-      getEnv("COGNITO_APP_CLIENT_SECRET");
+    const clientId = getCognitoClientId();
+    const clientSecret = getCognitoClientSecret();
 
 
     const origin = new URL(request.url).origin;
