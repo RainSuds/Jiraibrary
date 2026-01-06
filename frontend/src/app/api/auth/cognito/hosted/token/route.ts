@@ -45,6 +45,20 @@ function resolveRedirectUri(origin: string): string {
   return new URL("auth/cognito/callback", origin).toString();
 }
 
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const payload = (await request.json()) as TokenExchangePayload;
@@ -80,12 +94,29 @@ export async function POST(request: Request) {
       headers.Authorization = `Basic ${basic}`;
     }
 
-    const tokenResponse = await fetch(tokenUrl.toString(), {
-      method: "POST",
-      headers,
-      body: form.toString(),
-      cache: "no-store",
-    });
+    let tokenResponse: Response;
+    try {
+      tokenResponse = await fetchWithTimeout(
+        tokenUrl.toString(),
+        {
+          method: "POST",
+          headers,
+          body: form.toString(),
+          cache: "no-store",
+        },
+        10_000
+      );
+    } catch (error) {
+      const isAbort = error instanceof Error && error.name === "AbortError";
+      return NextResponse.json(
+        {
+          error: isAbort
+            ? "Timed out contacting Cognito token endpoint."
+            : "Unable to contact Cognito token endpoint.",
+        },
+        { status: 504 }
+      );
+    }
 
     const tokenText = await tokenResponse.text();
     if (!tokenResponse.ok) {
@@ -116,12 +147,29 @@ export async function POST(request: Request) {
 
     const backendUrl = new URL("api/auth/cognito/", backendBaseUrl());
 
-    const exchangeResponse = await fetch(backendUrl.toString(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ id_token: idToken }),
-      cache: "no-store",
-    });
+    let exchangeResponse: Response;
+    try {
+      exchangeResponse = await fetchWithTimeout(
+        backendUrl.toString(),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ id_token: idToken }),
+          cache: "no-store",
+        },
+        10_000
+      );
+    } catch (error) {
+      const isAbort = error instanceof Error && error.name === "AbortError";
+      return NextResponse.json(
+        {
+          error: isAbort
+            ? "Timed out contacting backend token exchange."
+            : "Unable to contact backend token exchange.",
+        },
+        { status: 504 }
+      );
+    }
 
     const exchangeText = await exchangeResponse.text();
     if (!exchangeResponse.ok) {
