@@ -34,9 +34,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const region = requireEnvAny(["COGNITO_REGION", "AWS_REGION"], "COGNITO_REGION");
+    const region = requireEnvAny(
+      ["COGNITO_REGION", "AWS_REGION", "NEXT_PUBLIC_COGNITO_REGION", "NEXT_PUBLIC_AWS_REGION"],
+      "COGNITO_REGION"
+    );
     const clientId = requireEnvAny(
-      ["COGNITO_USER_POOL_CLIENT_ID", "COGNITO_APP_CLIENT_ID", "COGNITO_CLIENT_ID"],
+      [
+        "COGNITO_USER_POOL_CLIENT_ID",
+        "COGNITO_APP_CLIENT_ID",
+        "COGNITO_CLIENT_ID",
+        "NEXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID",
+        "NEXT_PUBLIC_COGNITO_APP_CLIENT_ID",
+        "NEXT_PUBLIC_COGNITO_CLIENT_ID",
+      ],
       "COGNITO_USER_POOL_CLIENT_ID"
     );
     const clientSecret = getEnv("COGNITO_USER_POOL_CLIENT_SECRET");
