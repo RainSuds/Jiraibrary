@@ -39,15 +39,21 @@ const syncServerCookie = async (value: string | null) => {
   if (typeof window === "undefined") {
     return;
   }
+  let endpoint = SYNC_SESSION_ENDPOINT;
+  try {
+    endpoint = new URL(SYNC_SESSION_ENDPOINT, window.location.origin).toString();
+  } catch {
+    // fall back to the relative endpoint
+  }
   try {
     if (value) {
-      await fetch(SYNC_SESSION_ENDPOINT, {
+      await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: value }),
       });
     } else {
-      await fetch(SYNC_SESSION_ENDPOINT, { method: "DELETE" });
+      await fetch(endpoint, { method: "DELETE" });
     }
   } catch (error) {
     console.warn("Failed to sync auth cookie", error);

@@ -1511,14 +1511,18 @@ class ItemSubmissionSizeMeasurementSerializer(serializers.Serializer):
 
 
 class UserSubmissionSummarySerializer(serializers.ModelSerializer):
+    linked_item = serializers.SlugField(source="linked_item.slug", read_only=True)
+
     class Meta:
         model = models.ItemSubmission
         fields = [
             "id",
+            "item_slug",
             "title",
             "brand_name",
             "brand_slug",
             "status",
+            "linked_item",
             "created_at",
             "updated_at",
             "release_year",
@@ -1984,3 +1988,67 @@ class ItemSubmissionSerializer(serializers.ModelSerializer):
         if isinstance(value, bool):
             return value
         return True
+
+
+class ReviewImageSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.ReviewImage
+        fields = ["id", "url", "created_at"]
+
+    def get_url(self, obj: models.ReviewImage) -> str:
+        return obj.media_url
+
+
+class ItemReviewSerializer(serializers.ModelSerializer):
+    images = ReviewImageSerializer(many=True, read_only=True)
+    item_slug = serializers.SlugField(source="item.slug", read_only=True)
+    item_name = serializers.SerializerMethodField()
+    author_username = serializers.CharField(source="author.username", read_only=True)
+    author_display_name = serializers.SerializerMethodField()
+    author_avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.ItemReview
+        fields = [
+            "id",
+            "item",
+            "item_slug",
+            "item_name",
+            "recommendation",
+            "body",
+            "status",
+            "created_at",
+            "author_username",
+            "author_display_name",
+            "author_avatar_url",
+            "images",
+        ]
+
+    def get_item_name(self, obj: models.ItemReview) -> str | None:
+        item = getattr(obj, "item", None)
+        if not item:
+            return None
+        return item.display_name() if hasattr(item, "display_name") else getattr(item, "slug", None)
+
+    def get_author_display_name(self, obj: models.ItemReview) -> str | None:
+        profile = getattr(obj.author, "profile", None)
+        return getattr(profile, "display_name", None) or None
+
+    def get_author_avatar_url(self, obj: models.ItemReview) -> str | None:
+        profile = getattr(obj.author, "profile", None)
+        return getattr(profile, "avatar_url", None) or None
+
+
+class ItemReviewCreateSerializer(serializers.Serializer):
+    recommendation = serializers.ChoiceField(choices=models.ItemReview.Recommendation.choices)
+    body = serializers.CharField(allow_blank=True, required=False)
+
+
+class MyItemReviewSerializer(ItemReviewSerializer):
+    class Meta(ItemReviewSerializer.Meta):
+        fields = ItemReviewSerializer.Meta.fields + [
+            "moderated_at",
+            "moderation_note",
+        ]

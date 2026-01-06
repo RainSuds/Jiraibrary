@@ -57,6 +57,8 @@ class User(AbstractUser):
 
 class UserProfile(TimeStampedUUIDModel):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+    auth_provider = models.CharField(max_length=20, blank=True, default="")
+    username_changed_at = models.DateTimeField(null=True, blank=True)
     display_name = models.CharField(max_length=150, blank=True)
     bio = models.TextField(blank=True)
     pronouns = models.CharField(max_length=64, blank=True)

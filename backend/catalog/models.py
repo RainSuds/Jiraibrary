@@ -669,6 +669,123 @@ class Image(TimeStampedUUIDModel):
         return ""
 
 
+def review_image_upload_to(instance: Any, filename: str) -> str:
+    """Upload path for user-submitted review images.
+
+    Stored under: reviews/<brand>/<item>/<review_id>/<filename>
+    """
+    extension = Path(filename).suffix.lower() or ".jpg"
+
+    def slug_or_blank(value: Any) -> str:
+        if not value:
+            return ""
+        candidate = slugify(str(value))
+        return candidate or ""
+
+    review = getattr(instance, "review", None)
+    item = getattr(review, "item", None)
+    brand = getattr(item, "brand", None) if item else None
+    brand_slug = slug_or_blank(getattr(brand, "slug", "")) or slug_or_blank(getattr(brand, "name", ""))
+    brand_slug = brand_slug or "unassigned"
+    item_slug = slug_or_blank(getattr(item, "slug", "")) or slug_or_blank(getattr(item, "name", ""))
+    item_slug = item_slug or "misc"
+    review_id = str(getattr(review, "id", "")) or "pending"
+    filename_root = slug_or_blank(Path(filename).stem) or "image"
+    safe_filename = f"{filename_root}{extension}"
+    return "/".join(["reviews", brand_slug, item_slug, review_id, safe_filename])
+
+
+class ItemReview(TimeStampedUUIDModel):
+    class Recommendation(models.TextChoices):
+        RECOMMEND = "recommend", _("Recommend")
+        NOT_RECOMMEND = "not_recommend", _("Not recommend")
+        MIXED = "mixed", _("Mixed")
+
+    class ModerationStatus(models.TextChoices):
+        PENDING = "pending", _("Pending")
+        APPROVED = "approved", _("Approved")
+        REJECTED = "rejected", _("Rejected")
+
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="reviews")
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="item_reviews",
+    )
+    recommendation = models.CharField(max_length=16, choices=Recommendation.choices)
+    body = models.TextField(blank=True)
+    status = models.CharField(max_length=16, choices=ModerationStatus.choices, default=ModerationStatus.PENDING)
+    moderated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="moderated_item_reviews",
+    )
+    moderated_at = models.DateTimeField(null=True, blank=True)
+    moderation_note = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["item", "author"], name="unique_item_review_per_author"),
+        ]
+
+
+class ReviewImage(TimeStampedUUIDModel):
+    review = models.ForeignKey(ItemReview, on_delete=models.CASCADE, related_name="images")
+    image_file = models.ImageField(upload_to=review_image_upload_to)
+    storage_path = models.CharField(max_length=512, blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="uploaded_review_images",
+    )
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        super().save(*args, **kwargs)
+        if self.image_file:
+            stored_value = self.image_file.name
+            if stored_value:
+                storage_location = getattr(settings, "AWS_S3_MEDIA_LOCATION", "").strip("/")
+                if storage_location and not stored_value.startswith(f"{storage_location}/"):
+                    stored_value = f"{storage_location}/{stored_value.lstrip('/')}"
+                if self.storage_path != stored_value:
+                    type(self).objects.filter(pk=self.pk).update(storage_path=stored_value)
+                    self.storage_path = stored_value
+
+    @property
+    def media_url(self) -> str:
+        if self.storage_path:
+            if self.storage_path.startswith(("http://", "https://")):
+                return self.storage_path
+            base_url = getattr(settings, "MEDIA_URL", "") or ""
+            if base_url:
+                relative_path = self.storage_path.lstrip("/")
+                media_prefix = getattr(settings, "AWS_S3_MEDIA_LOCATION", "").strip("/")
+                if media_prefix:
+                    normalized_base = base_url.rstrip("/").lower()
+                    if normalized_base.endswith(f"/{media_prefix.lower()}"):
+                        prefix_with_slash = f"{media_prefix}/"
+                        if relative_path.lower().startswith(prefix_with_slash.lower()):
+                            relative_path = relative_path[len(prefix_with_slash) :]
+                if base_url.endswith("/"):
+                    return base_url + relative_path
+                return f"{base_url}/{relative_path}"
+            return self.storage_path
+        if self.image_file:
+            try:
+                return self.image_file.url
+            except Exception:  # pragma: no cover
+                return self.image_file.name
+        return ""
+
+
 class ItemTag(TimeStampedUUIDModel):
     class TagContext(models.TextChoices):
         PRIMARY = "primary", _("Primary")

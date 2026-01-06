@@ -558,7 +558,7 @@ export type UserProfile = {
   preferred_currency: string | null;
   share_owned_public?: boolean;
   share_wishlist_public?: boolean;
-  auth_provider?: "password" | "google";
+  auth_provider?: "password" | "google" | "cognito";
 };
 
 export type AuthResponse = {
@@ -629,6 +629,15 @@ async function handleJsonResponse<T>(response: Response): Promise<T> {
 }
 
 export async function login(identifier: string, password: string): Promise<AuthResponse> {
+  if ((process.env.NEXT_PUBLIC_AUTH_PROVIDER ?? "").toLowerCase() === "cognito") {
+    const response = await fetch("/api/auth/cognito/login", {
+      method: "POST",
+      headers: buildJsonHeaders(),
+      body: JSON.stringify({ identifier, username: identifier, password }),
+    });
+    return handleJsonResponse<AuthResponse>(response);
+  }
+
   const response = await fetch(buildUrl("api/auth/login/"), {
     method: "POST",
     headers: buildJsonHeaders(),
