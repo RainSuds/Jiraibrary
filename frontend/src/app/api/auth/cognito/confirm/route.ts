@@ -6,7 +6,7 @@ import {
 } from "@aws-sdk/client-cognito-identity-provider";
 import crypto from "node:crypto";
 
-import { getEnv, requireEnvAny } from "@/lib/server/env";
+import { getCognitoClientId, getCognitoClientSecret, getCognitoRegion } from "@/lib/server/cognito-env";
 
 export const runtime = "nodejs";
 
@@ -32,22 +32,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing username or code" }, { status: 400 });
     }
 
-    const region = requireEnvAny(
-      ["COGNITO_REGION", "AWS_REGION", "NEXT_PUBLIC_COGNITO_REGION", "NEXT_PUBLIC_AWS_REGION"],
-      "COGNITO_REGION"
-    );
-    const clientId = requireEnvAny(
-      [
-        "COGNITO_USER_POOL_CLIENT_ID",
-        "COGNITO_APP_CLIENT_ID",
-        "COGNITO_CLIENT_ID",
-        "NEXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID",
-        "NEXT_PUBLIC_COGNITO_APP_CLIENT_ID",
-        "NEXT_PUBLIC_COGNITO_CLIENT_ID",
-      ],
-      "COGNITO_USER_POOL_CLIENT_ID"
-    );
-    const clientSecret = getEnv("COGNITO_USER_POOL_CLIENT_SECRET");
+    const region = getCognitoRegion();
+    const clientId = getCognitoClientId();
+    const clientSecret = getCognitoClientSecret();
 
     const secretHash = clientSecret ? computeSecretHash(username, clientId, clientSecret) : undefined;
 
