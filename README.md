@@ -76,6 +76,11 @@ python manage.py migrate
 python manage.py runserver 0.0.0.0:8000
 ```
 
+Backend env templates:
+
+- `backend/.env.local` (local dev config; not committed)
+- `backend/.env.prod.example` (deployment template; inject via App Runner env/secrets)
+
 ### Frontend
 
 ```bash
@@ -83,6 +88,10 @@ cd frontend
 npm install
 npm run dev
 ```
+
+Frontend env templates:
+
+
 
 Visit `http://localhost:3000` for the web app and `http://localhost:8000/admin/` for Django admin.
 
@@ -92,6 +101,26 @@ Visit `http://localhost:3000` for the web app and `http://localhost:8000/admin/`
 
 - Backend unit tests: `cd backend && python manage.py test`
 - Frontend tests: `cd frontend && npm run test`
+
+---
+
+## Amazon Cognito auth (optional)
+
+Jiraibrary can use an Amazon Cognito User Pool for signup/login, while the Django backend still issues its own DRF token for API calls.
+
+### Frontend env vars
+
+- `NEXT_PUBLIC_AUTH_PROVIDER=cognito`
+- `COGNITO_REGION=1`
+- `COGNITO_USER_POOL_CLIENT_ID=...`
+- `COGNITO_USER_POOL_CLIENT_SECRET=...` (optional; only if your app client has a secret)
+- `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000` (already used; required for token exchange)
+
+### Backend env vars
+
+- `COGNITO_REGION=us-east-1`
+- `COGNITO_USER_POOL_ID=us-east-1_...`
+- `COGNITO_APP_CLIENT_ID=...` (same value as the frontend client id)
 
 ---
 

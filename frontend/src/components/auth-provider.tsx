@@ -6,13 +6,16 @@ import {
   ApiError,
   AuthResponse,
   UserProfile,
+  deleteAccount as apiDeleteAccount,
   getCurrentUser,
   login as apiLogin,
   loginWithGoogle as apiLoginWithGoogle,
   logout as apiLogout,
   register as apiRegister,
   RegisterPayload,
+  UpdateUserProfilePayload,
   UpdateUserPreferencesPayload,
+  updateUserProfile,
   updateUserPreferences,
 } from "@/lib/api";
 
@@ -22,10 +25,13 @@ type AuthContextValue = {
   loading: boolean;
   login: (identifier: string, password: string) => Promise<AuthResponse>;
   loginWithGoogle: (idToken: string) => Promise<AuthResponse>;
+  applyAuth: (auth: AuthResponse) => void;
   register: (payload: RegisterPayload) => Promise<AuthResponse>;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
   refresh: () => Promise<void>;
   updatePreferences: (payload: UpdateUserPreferencesPayload) => Promise<void>;
+  updateProfile: (payload: UpdateUserProfilePayload) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -102,6 +108,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const applyAuth = useCallback((auth: AuthResponse) => {
+    const normalized = auth.user;
+    setToken(auth.token);
+    setUser(normalized);
+    persistAuthToken(auth.token);
+  }, []);
+
   const hydrate = useCallback(async (authToken: string) => {
     try {
       setLoading(true);
@@ -137,11 +150,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const auth = await apiLogin(identifier, password);
-      const normalized = auth.user;
-      setToken(auth.token);
-      setUser(normalized);
-      persistAuthToken(auth.token);
-      return { ...auth, user: normalized };
+      applyAuth(auth);
+      return { ...auth, user: auth.user };
     } finally {
       setLoading(false);
     }
@@ -151,11 +161,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const auth = await apiLoginWithGoogle(idToken);
-      const normalized = auth.user;
-      setToken(auth.token);
-      setUser(normalized);
-      persistAuthToken(auth.token);
-      return { ...auth, user: normalized };
+      applyAuth(auth);
+      return { ...auth, user: auth.user };
     } finally {
       setLoading(false);
     }
@@ -165,11 +172,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const auth = await apiRegister(payload);
-      const normalized = auth.user;
-      setToken(auth.token);
-      setUser(normalized);
-      persistAuthToken(auth.token);
-      return { ...auth, user: normalized };
+      applyAuth(auth);
+      return { ...auth, user: auth.user };
     } finally {
       setLoading(false);
     }
@@ -188,6 +192,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       persistAuthToken(null);
       setToken(null);
       setUser(null);
+    }
+  };
+
+  const deleteAccount = async () => {
+    if (!token) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await apiDeleteAccount(token);
+    } catch (error) {
+      console.warn("Delete account request failed", error);
+      throw error;
+    } finally {
+      persistAuthToken(null);
+      setToken(null);
+      setUser(null);
+      setLoading(false);
     }
   };
 
@@ -212,7 +235,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const updated = await updateUserPreferences(token, payload);
         setUser(updated);
       } catch (error) {
-        console.error("Failed to update user preferences", error);
+        if (!(error instanceof ApiError)) {
+          console.error("Failed to update user preferences", error);
+        }
+        throw error;
+      }
+    },
+    [token],
+  );
+
+  const updateProfile = useCallback(
+    async (payload: UpdateUserProfilePayload) => {
+      if (!token) {
+        return;
+      }
+      try {
+        const updated = await updateUserProfile(token, payload);
+        setUser(updated);
+      } catch (error) {
+        if (!(error instanceof ApiError)) {
+          console.error("Failed to update user profile", error);
+        }
         throw error;
       }
     },
@@ -225,10 +268,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     login,
     loginWithGoogle,
+    applyAuth,
     register,
     logout,
+    deleteAccount,
     refresh,
     updatePreferences,
+    updateProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -6,6 +6,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
+import { useFlash } from "@/components/flash-provider";
+import { type ItemReview, listMyReviews, uploadAvatar } from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/media";
 
 type ProfileTab = {
   id: string;
@@ -16,7 +19,8 @@ type ProfileTab = {
 export default function ProfilePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, loading, logout, updatePreferences } = useAuth();
+  const { user, token, loading, logout, updatePreferences, deleteAccount, updateProfile, refresh } = useAuth();
+  const { addFlash } = useFlash();
   const defaultTabId = "activity";
 
   const [shareSettings, setShareSettings] = useState(() => ({
@@ -25,12 +29,39 @@ export default function ProfilePage() {
   }));
   const [shareSaving, setShareSaving] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [deleteSaving, setDeleteSaving] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [profileUsername, setProfileUsername] = useState("");
+  const [profileDisplayName, setProfileDisplayName] = useState("");
+  const [profileBio, setProfileBio] = useState("");
+  const [profileWebsite, setProfileWebsite] = useState("");
+  const [pronounsPreset, setPronounsPreset] = useState<"" | "She / Her" | "He / Him" | "They / Them" | "__custom__">("");
+  const [pronounsCustom, setPronounsCustom] = useState("");
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<"owned" | "wishlist" | null>(null);
   const [shareOrigin, setShareOrigin] = useState("");
+  const [recentReviews, setRecentReviews] = useState<ItemReview[] | null>(null);
+  const [recentReviewsLoading, setRecentReviewsLoading] = useState(false);
+  const [recentReviewsError, setRecentReviewsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
       return;
+    }
+    setProfileUsername(user.username);
+    setProfileDisplayName(user.display_name || "");
+    setProfileBio(user.bio || "");
+    setProfileWebsite(user.website || "");
+
+    const rawPronouns = (user.pronouns || "").trim();
+    if (rawPronouns === "" || rawPronouns === "She / Her" || rawPronouns === "He / Him" || rawPronouns === "They / Them") {
+      setPronounsPreset(rawPronouns as "" | "She / Her" | "He / Him" | "They / Them");
+      setPronounsCustom("");
+    } else {
+      setPronounsPreset("__custom__");
+      setPronounsCustom(rawPronouns);
     }
     setShareSettings({
       owned: Boolean(user.share_owned_public),
@@ -44,6 +75,36 @@ export default function ProfilePage() {
     }
     setShareOrigin(window.location.origin);
   }, []);
+
+  useEffect(() => {
+    if (!token || !user) {
+      return;
+    }
+    let cancelled = false;
+    setRecentReviewsError(null);
+    setRecentReviewsLoading(true);
+    void (async () => {
+      try {
+        const reviews = await listMyReviews(token, { limit: 3, status: "all" });
+        if (!cancelled) {
+          setRecentReviews(reviews);
+        }
+      } catch (error) {
+        console.error("Failed to load recent reviews", error);
+        if (!cancelled) {
+          setRecentReviewsError("Unable to load your reviews right now.");
+          setRecentReviews(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setRecentReviewsLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user]);
 
   useEffect(() => {
     if (!copyFeedback) {
@@ -102,15 +163,23 @@ export default function ProfilePage() {
       try {
         const payload = field === "owned" ? { share_owned_public: nextValue } : { share_wishlist_public: nextValue };
         await updatePreferences(payload);
+        addFlash({
+          kind: "success",
+          title: "Settings saved",
+          message: `Sharing ${field === "owned" ? "owned" : "wishlist"} items is now ${nextValue ? "enabled" : "disabled"}.`,
+          timeoutMs: 1800,
+        });
       } catch (error) {
         console.error("Failed to update sharing preference", error);
         setShareError("Unable to update sharing preference. Try again in a moment.");
+        const message = error instanceof Error ? error.message : "Unable to update sharing preference.";
+        addFlash({ kind: "error", title: "Save failed", message });
         setShareSettings((prev) => ({ ...prev, [field]: previousValue }));
       } finally {
         setShareSaving(false);
       }
     },
-    [shareSettings, updatePreferences, user],
+    [addFlash, shareSettings, updatePreferences, user],
   );
 
   const handleShareCopy = useCallback(
@@ -132,12 +201,14 @@ export default function ProfilePage() {
           document.body.removeChild(textarea);
         }
         setCopyFeedback(field);
+        addFlash({ kind: "success", title: "Copied", message: "Share link copied to clipboard.", timeoutMs: 1500 });
       } catch (error) {
         console.error("Failed to copy share link", error);
         setShareError("Unable to copy link automatically. Please copy it manually.");
+        addFlash({ kind: "error", title: "Copy failed", message: "Unable to copy link automatically. Please copy it manually." });
       }
     },
-    [shareOwnedUrl, shareWishlistUrl],
+    [addFlash, shareOwnedUrl, shareWishlistUrl],
   );
 
   const selectTab = useCallback(
@@ -200,12 +271,107 @@ export default function ProfilePage() {
   const joinedDisplay = user.is_staff || user.is_superuser ? "Core team" : "Community member";
   const handleLogout = async () => {
     await logout();
+    addFlash({ kind: "success", title: "Signed out", message: "You have been signed out.", timeoutMs: 1500 });
     router.push("/");
+  };
+
+  const handleSaveProfile = async () => {
+    if (!user || profileSaving) {
+      return;
+    }
+
+    const normalizedUsername = profileUsername.trim().replace(/^@+/, "");
+    const normalizedDisplayName = profileDisplayName.trim();
+    const normalizedPronouns = (
+      pronounsPreset === "__custom__" ? pronounsCustom.trim() : (pronounsPreset || "").trim()
+    ).trim();
+    const normalizedBio = profileBio.trim();
+    const normalizedWebsite = profileWebsite.trim();
+
+    setProfileError(null);
+    setProfileSaving(true);
+    try {
+      await updateProfile({
+        username: normalizedUsername,
+        displayName: normalizedDisplayName,
+        pronouns: normalizedPronouns,
+        bio: normalizedBio,
+        website: normalizedWebsite,
+      });
+      addFlash({ kind: "success", title: "Profile updated", message: "Your profile changes have been saved.", timeoutMs: 2000 });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to save profile.";
+      setProfileError(message);
+      const isCooldown = typeof error === "object" && error !== null && "status" in error && (error as { status?: unknown }).status === 429;
+      addFlash({ kind: isCooldown ? "warning" : "error", title: isCooldown ? "Username cooldown" : "Save failed", message });
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleAvatarChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+    if (!token) {
+      addFlash({ kind: "error", title: "Upload failed", message: "Login is required before uploading an avatar." });
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      addFlash({ kind: "error", title: "Upload failed", message: "Please choose an image file." });
+      return;
+    }
+
+    setAvatarUploading(true);
+    try {
+      await uploadAvatar(token, file);
+      await refresh();
+      addFlash({ kind: "success", title: "Avatar updated", message: "Your profile photo has been updated.", timeoutMs: 2000 });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to upload avatar.";
+      addFlash({ kind: "error", title: "Upload failed", message });
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteSaving) {
+      return;
+    }
+
+    setDeleteError(null);
+
+    const confirmed = typeof window !== "undefined" ? window.confirm("Delete your Jiraibrary account permanently? This cannot be undone.") : false;
+    if (!confirmed) {
+      return;
+    }
+
+    setDeleteSaving(true);
+    try {
+      await deleteAccount();
+      addFlash({
+        kind: "warning",
+        title: "Account deleted",
+        message: "Your account has been deleted. We're sorry to see you go.",
+        timeoutMs: 3500,
+      });
+      router.push("/");
+    } catch (error) {
+      console.error("Failed to delete account", error);
+      setDeleteError("Unable to delete your account right now. Please try again.");
+      const message = error instanceof Error ? error.message : "Unable to delete your account right now.";
+      addFlash({ kind: "error", title: "Delete failed", message });
+    } finally {
+      setDeleteSaving(false);
+    }
   };
 
   const contributionStats = [
     { label: "Submissions", helper: "Stats appear after your first submission." },
-    { label: "Comments", helper: "Conversation history syncing soon." },
+    { label: "Reviews", helper: "Track pending and approved reviews." },
     { label: "Closet", helper: "Wardrobe + wishlist now live on the Closet page." },
   ] as const;
 
@@ -216,6 +382,54 @@ export default function ProfilePage() {
       case "activity":
         return (
           <div className="space-y-6">
+            <section className="rounded-3xl border border-rose-100 bg-white p-5">
+              <div className="flex flex-wrap items-center gap-3">
+                <h3 className="text-lg font-semibold text-rose-900">My Reviews</h3>
+                <Link
+                  href="/profile/reviews"
+                  className="ml-auto rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:text-rose-900"
+                >
+                  View all
+                </Link>
+              </div>
+              <p className="mt-2 text-sm text-rose-500">Track pending reviews and what you&apos;ve submitted.</p>
+              {recentReviewsError ? <p className="mt-3 text-sm text-rose-600">{recentReviewsError}</p> : null}
+              {recentReviewsLoading ? (
+                <div className="mt-4 rounded-2xl border border-dashed border-rose-200 bg-rose-50/60 p-4 text-sm text-rose-500">
+                  Loading your reviews...
+                </div>
+              ) : recentReviews && recentReviews.length > 0 ? (
+                <div className="mt-4 space-y-3">
+                  {recentReviews.map((review) => (
+                    <div key={review.id} className="rounded-2xl border border-rose-100 bg-white/70 p-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {review.item_slug ? (
+                          <Link
+                            href={`/items/${encodeURIComponent(review.item_slug)}`}
+                            className="text-sm font-semibold text-rose-900 hover:underline"
+                          >
+                            {review.item_name || review.item_slug}
+                          </Link>
+                        ) : (
+                          <span className="text-sm font-semibold text-rose-900">{review.item_name || "Item"}</span>
+                        )}
+                        <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                          {review.status}
+                        </span>
+                        <span className="ml-auto text-xs text-rose-400">
+                          {new Date(review.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      {review.body ? <p className="mt-2 text-sm text-rose-700">{review.body}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-dashed border-rose-200 bg-rose-50/60 p-4 text-sm text-rose-500">
+                  You haven&apos;t submitted any reviews yet.
+                </div>
+              )}
+            </section>
             <section className="rounded-3xl border border-rose-100 bg-white p-5">
               <h3 className="text-lg font-semibold text-rose-900">Comments</h3>
               <p className="mt-2 text-sm text-rose-500">
@@ -269,21 +483,42 @@ export default function ProfilePage() {
           <div className="space-y-6">
             <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
               <div className="rounded-3xl border border-rose-100 bg-white p-5">
+                <p className="text-xs uppercase tracking-wide text-rose-400">Username</p>
+                <div className="mt-2 flex items-center gap-2 rounded-2xl border border-rose-200 px-4 py-2">
+                  <span className="text-sm font-semibold text-rose-400">@</span>
+                  <input
+                    type="text"
+                    value={profileUsername}
+                    onChange={(event) => setProfileUsername(event.target.value)}
+                    className="w-full bg-transparent text-sm text-rose-900 focus:outline-none"
+                    inputMode="text"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-rose-400">Username must be unique. You can change it once every 30 days.</p>
                 <p className="text-xs uppercase tracking-wide text-rose-400">Display name</p>
                 <input
                   type="text"
-                  defaultValue={user.display_name || user.username}
+                  value={profileDisplayName}
+                  onChange={(event) => setProfileDisplayName(event.target.value)}
                   className="mt-2 w-full rounded-2xl border border-rose-200 px-4 py-2 text-sm focus:border-rose-400 focus:outline-none"
                 />
+                <p className="mt-2 text-xs text-rose-400">Display names can include spaces and don&apos;t have to be unique.</p>
                 <p className="mt-4 text-xs uppercase tracking-wide text-rose-400">Bio</p>
                 <textarea
                   rows={4}
+                  value={profileBio}
+                  onChange={(event) => setProfileBio(event.target.value)}
                   placeholder="Share inspirations, favorite brands, or wardrobe focus."
                   className="mt-2 w-full rounded-2xl border border-rose-200 px-4 py-2 text-sm focus:border-rose-400 focus:outline-none"
                 />
                 <p className="mt-4 text-xs uppercase tracking-wide text-rose-400">Website or socials</p>
                 <input
                   type="url"
+                  value={profileWebsite}
+                  onChange={(event) => setProfileWebsite(event.target.value)}
                   placeholder="https://"
                   className="mt-2 w-full rounded-2xl border border-rose-200 px-4 py-2 text-sm focus:border-rose-400 focus:outline-none"
                 />
@@ -291,21 +526,74 @@ export default function ProfilePage() {
               <div className="rounded-3xl border border-rose-100 bg-white p-5">
                 <p className="text-xs uppercase tracking-wide text-rose-400">Avatar</p>
                 <div className="mt-3 flex flex-col items-center gap-3">
-                  <div className="h-24 w-24 rounded-full bg-rose-50" aria-hidden="true" />
-                  <button className="rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700">Upload photo</button>
+                  <div className="relative h-24 w-24 overflow-hidden rounded-full border border-rose-100 bg-rose-50">
+                    {user.avatar_url ? (
+                      <Image
+                        src={resolveMediaUrl(user.avatar_url) ?? user.avatar_url}
+                        alt="Profile photo"
+                        fill
+                        sizes="96px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-3xl font-semibold text-rose-500">
+                        {(user.display_name || user.username).charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                  <label className="rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:text-rose-900">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={(event) => {
+                        void handleAvatarChange(event);
+                      }}
+                      disabled={avatarUploading}
+                    />
+                    {avatarUploading ? "Uploading…" : "Upload photo"}
+                  </label>
                 </div>
                 <p className="mt-6 text-xs uppercase tracking-wide text-rose-400">Pronouns</p>
-                <select className="mt-2 w-full rounded-2xl border border-rose-200 px-4 py-2 text-sm">
-                  <option>She / Her</option>
-                  <option>He / Him</option>
-                  <option>They / Them</option>
-                  <option>Custom</option>
+                <select
+                  value={pronounsPreset}
+                  onChange={(event) => {
+                    const next = event.target.value as typeof pronounsPreset;
+                    setPronounsPreset(next);
+                    if (next !== "__custom__") {
+                      setPronounsCustom("");
+                    }
+                  }}
+                  className="mt-2 w-full rounded-2xl border border-rose-200 px-4 py-2 text-sm"
+                >
+                  <option value="">Prefer not to say</option>
+                  <option value="She / Her">She / Her</option>
+                  <option value="He / Him">He / Him</option>
+                  <option value="They / Them">They / Them</option>
+                  <option value="__custom__">Custom</option>
                 </select>
+                {pronounsPreset === "__custom__" ? (
+                  <input
+                    type="text"
+                    value={pronounsCustom}
+                    onChange={(event) => setPronounsCustom(event.target.value)}
+                    placeholder="Custom pronouns"
+                    className="mt-2 w-full rounded-2xl border border-rose-200 px-4 py-2 text-sm focus:border-rose-400 focus:outline-none"
+                  />
+                ) : null}
               </div>
             </div>
+            {profileError ? (
+              <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{profileError}</p>
+            ) : null}
             <div className="flex flex-wrap gap-3">
-              <button className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700">
-                Save profile
+              <button
+                type="button"
+                onClick={() => void handleSaveProfile()}
+                disabled={profileSaving}
+                className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+              >
+                {profileSaving ? "Saving…" : "Save profile"}
               </button>
               <button
                 type="button"
@@ -328,23 +616,15 @@ export default function ProfilePage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-3xl border border-rose-100 bg-white p-5">
                 <p className="text-xs uppercase tracking-wide text-rose-400">Email</p>
-                <div className="mt-2 flex gap-2">
+                <div className="mt-2">
                   <input
                     type="email"
                     defaultValue={user.email}
-                    disabled={usesGoogleAuth}
+                    disabled
                     className="w-full rounded-2xl border border-rose-200 px-4 py-2 text-sm focus:border-rose-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-rose-50 disabled:text-rose-400"
                   />
-                  <button
-                    disabled={usesGoogleAuth}
-                    className="rounded-2xl bg-rose-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Update
-                  </button>
                 </div>
-                {usesGoogleAuth ? (
-                  <p className="mt-2 text-xs text-rose-400">Email changes are handled via your Google Account.</p>
-                ) : null}
+                <p className="mt-2 text-xs text-rose-400">Email cannot be changed.</p>
               </div>
               <div className="rounded-3xl border border-rose-100 bg-white p-5">
                 <p className="text-xs uppercase tracking-wide text-rose-400">Password</p>
@@ -471,8 +751,16 @@ export default function ProfilePage() {
             <div className="rounded-3xl border border-rose-100 bg-white p-5">
               <p className="text-xs uppercase tracking-wide text-rose-400">Delete account</p>
               <p className="mt-2 text-sm text-rose-500">Permanently remove your profile and associated data. This action cannot be undone.</p>
-              <button className="mt-3 rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600">
-                Delete account
+              {deleteError ? (
+                <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{deleteError}</p>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void handleDeleteAccount()}
+                disabled={deleteSaving}
+                className="mt-3 rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600 disabled:opacity-60"
+              >
+                {deleteSaving ? "Deleting…" : "Delete account"}
               </button>
             </div>
           </div>
@@ -555,7 +843,7 @@ export default function ProfilePage() {
               <div className="relative h-20 w-20 overflow-hidden rounded-full border border-rose-100 bg-rose-50">
                 {user.avatar_url ? (
                   <Image
-                    src={user.avatar_url}
+                    src={resolveMediaUrl(user.avatar_url) ?? user.avatar_url}
                     alt={`${user.display_name || user.username}'s profile picture`}
                     fill
                     sizes="80px"

@@ -45,6 +45,20 @@ function buildUrl(path: string, params?: QueryParams): string {
   return url.toString();
 }
 
+function encodePathSegment(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  try {
+    // Next.js may pass percent-encoded route params in some cases (e.g. copy/paste URLs).
+    // Decode first to avoid double-encoding (% -> %25).
+    return encodeURIComponent(decodeURIComponent(trimmed));
+  } catch {
+    return encodeURIComponent(trimmed);
+  }
+}
+
 async function fetchJson<T>(
   path: string,
   params?: QueryParams,
@@ -60,7 +74,24 @@ async function fetchJson<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`Request to ${url} failed with status ${response.status}`);
+    let detail = "";
+    try {
+      const contentType = response.headers.get("content-type") ?? "";
+      if (contentType.includes("application/json")) {
+        const payload = (await response.json()) as unknown;
+        if (payload && typeof payload === "object" && "detail" in payload) {
+          detail = String((payload as { detail?: unknown }).detail ?? "");
+        } else {
+          detail = JSON.stringify(payload);
+        }
+      } else {
+        detail = (await response.text()) || "";
+      }
+    } catch {
+      // ignore error parsing body
+    }
+    const suffix = detail ? `: ${detail}` : "";
+    throw new Error(`Request to ${url} failed with status ${response.status}${suffix}`);
   }
 
   return (await response.json()) as T;
@@ -535,9 +566,78 @@ export async function getItemList(
 }
 
 export async function getItemDetail(slug: string): Promise<ItemDetail> {
-  return fetchJson<ItemDetail>(`api/items/${encodeURIComponent(slug)}/`, undefined, {
+  return fetchJson<ItemDetail>(`api/items/${encodePathSegment(slug)}/`, undefined, {
     cache: "no-store",
   });
+}
+
+export type ReviewImage = {
+  id: string;
+  url: string;
+  created_at: string;
+};
+
+export type ItemReview = {
+  id: string;
+  item: string;
+  item_slug?: string;
+  item_name?: string | null;
+  recommendation: "recommend" | "not_recommend" | "mixed";
+  body: string;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+  moderated_at?: string | null;
+  moderation_note?: string;
+  author_username: string;
+  author_display_name: string | null;
+  author_avatar_url: string | null;
+  images: ReviewImage[];
+};
+
+export type CreateItemReviewPayload = {
+  recommendation: ItemReview["recommendation"];
+  body?: string;
+  images: File[];
+};
+
+export async function listItemReviews(slug: string, limit?: number): Promise<ItemReview[]> {
+  const params = limit ? { limit: String(limit) } : undefined;
+  return fetchJson<ItemReview[]>(`api/items/${encodePathSegment(slug)}/reviews/`, params, { cache: "no-store" });
+}
+
+export async function createItemReview(token: string, slug: string, payload: CreateItemReviewPayload): Promise<ItemReview> {
+  const form = new FormData();
+  form.append("recommendation", payload.recommendation);
+  form.append("body", payload.body ?? "");
+  payload.images.forEach((file) => form.append("images", file));
+
+  const response = await fetch(buildUrl(`api/items/${encodePathSegment(slug)}/reviews/`), {
+    method: "POST",
+    headers: buildAuthHeaders(token),
+    body: form,
+  });
+
+  return handleJsonResponse<ItemReview>(response);
+}
+
+export async function listMyReviews(
+  token: string,
+  params?: { status?: "pending" | "approved" | "rejected" | "all"; limit?: number }
+): Promise<ItemReview[]> {
+  const query: QueryParams = {};
+  if (params?.status && params.status !== "all") {
+    query.status = params.status;
+  }
+  if (typeof params?.limit === "number") {
+    query.limit = String(params.limit);
+  }
+
+  const response = await fetch(buildUrl("api/reviews/mine/", query), {
+    method: "GET",
+    headers: buildAuthHeaders(token),
+    cache: "no-store",
+  });
+  return handleJsonResponse<ItemReview[]>(response);
 }
 
 export type UserRole = {
@@ -554,6 +654,10 @@ export type UserProfile = {
   display_name: string;
   role: UserRole | null;
   avatar_url: string | null;
+  pronouns?: string | null;
+  bio?: string | null;
+  location?: string | null;
+  website?: string | null;
   preferred_language: string | null;
   preferred_currency: string | null;
   share_owned_public?: boolean;
@@ -702,6 +806,52 @@ export async function updateUserPreferences(
     body: JSON.stringify(payload),
   });
   return handleJsonResponse<UserProfile>(response);
+}
+
+export type UpdateUserProfilePayload = {
+  username?: string;
+  displayName?: string;
+  pronouns?: string;
+  bio?: string;
+  location?: string;
+  website?: string;
+};
+
+export async function updateUserProfile(token: string, payload: UpdateUserProfilePayload): Promise<UserProfile> {
+  const response = await fetch(buildUrl("api/auth/me/"), {
+    method: "PATCH",
+    headers: buildJsonHeaders(buildAuthHeaders(token)),
+    body: JSON.stringify({
+      username: payload.username,
+      display_name: payload.displayName,
+      pronouns: payload.pronouns,
+      bio: payload.bio,
+      location: payload.location,
+      website: payload.website,
+    }),
+  });
+  return handleJsonResponse<UserProfile>(response);
+}
+
+export async function uploadAvatar(token: string, file: File): Promise<UserProfile> {
+  const form = new FormData();
+  form.append("avatar", file);
+
+  const response = await fetch(buildUrl("api/auth/avatar/"), {
+    method: "POST",
+    headers: buildAuthHeaders(token),
+    body: form,
+  });
+
+  return handleJsonResponse<UserProfile>(response);
+}
+
+export async function deleteAccount(token: string): Promise<void> {
+  const response = await fetch(buildUrl("api/auth/me/"), {
+    method: "DELETE",
+    headers: buildAuthHeaders(token),
+  });
+  await handleJsonResponse<void>(response);
 }
 
 export type ItemFavorite = {
@@ -1257,10 +1407,12 @@ export async function listSubmissions(token: string): Promise<ItemSubmissionPayl
 
 export type SubmissionSummary = {
   id: string;
+  item_slug?: string;
   title: string;
   brand_name: string;
   brand_slug: string | null;
   status: string;
+  linked_item?: string | null;
   created_at: string;
   updated_at: string;
   release_year: number | null;
@@ -1269,6 +1421,34 @@ export type SubmissionSummary = {
   image_url: string | null;
   reference_url: string | null;
 };
+
+export type PublicUserProfile = {
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  pronouns: string | null;
+  bio: string | null;
+  location: string | null;
+  website: string | null;
+  share_owned_public: boolean;
+  share_wishlist_public: boolean;
+};
+
+export async function getPublicUserProfile(username: string): Promise<PublicUserProfile> {
+  return fetchJson<PublicUserProfile>(`api/users/${encodeURIComponent(username)}/`, undefined, { cache: "no-store" });
+}
+
+export async function listUserSubmissions(username: string, limit?: number): Promise<SubmissionSummary[]> {
+  const params = typeof limit === "number" ? { limit: String(limit) } : undefined;
+  return fetchJson<SubmissionSummary[]>(`api/users/${encodeURIComponent(username)}/submissions/`, params, {
+    cache: "no-store",
+  });
+}
+
+export async function listUserReviews(username: string, limit?: number): Promise<ItemReview[]> {
+  const params = typeof limit === "number" ? { limit: String(limit) } : undefined;
+  return fetchJson<ItemReview[]>(`api/users/${encodeURIComponent(username)}/reviews/`, params, { cache: "no-store" });
+}
 
 export async function listMySubmissions(
   token: string,

@@ -8,6 +8,84 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { API_BASE } from "@/lib/api";
 
+const PKCE_VERIFIER_KEY_PREFIX = "jiraibrary.pkce.verifier.";
+const OAUTH_NEXT_KEY_PREFIX = "jiraibrary.oauth.next.";
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+async function sha256Base64Url(value: string): Promise<string> {
+  const encoded = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+  return base64UrlEncode(new Uint8Array(digest));
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const encoded = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+  const bytes = new Uint8Array(digest);
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function randomStringBase64Url(byteLength = 32): string {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return base64UrlEncode(bytes);
+}
+
+function randomAlphanumeric(length = 8): string {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  let out = "";
+  for (const byte of bytes) {
+    out += alphabet[byte % alphabet.length];
+  }
+  return out;
+}
+
+function safeNextRoute(raw: string): string {
+  if (!raw.startsWith("/") || raw.startsWith("//")) {
+    return "/profile";
+  }
+  return raw;
+}
+
+function writeSessionStorage(key: string, value: string): void {
+  try {
+    window.sessionStorage.setItem(key, value);
+  } catch {
+    // ignore
+  }
+}
+
+function usernameFromEmail(email: string): string {
+  const localPart = email.split("@", 1)[0] ?? "";
+  const normalized = localPart
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return (normalized || "user").slice(0, 150);
+}
+
+async function cognitoUsernameFromEmail(email: string): Promise<string> {
+  // Cognito pools configured with email aliases typically disallow email-formatted usernames.
+  // Use a deterministic suffix so confirm/resend works across retries.
+  const base = usernameFromEmail(email);
+  const suffix = (await sha256Hex(email)).slice(0, 10);
+  const combined = `${base}-${suffix}`;
+  return combined.slice(0, 150);
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const nextRoute = useMemo(() => {
@@ -15,10 +93,7 @@ export default function LoginPage() {
       if (typeof window === "undefined") return "/profile";
       const params = new URLSearchParams(window.location.search);
       const raw = params.get("next") ?? "/profile";
-      if (!raw.startsWith("/") || raw.startsWith("//")) {
-        return "/profile";
-      }
-      return raw;
+      return safeNextRoute(raw);
     } catch {
       return "/profile";
     }
@@ -29,9 +104,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-  const [registerUsername, setRegisterUsername] = useState("");
   const [registerEmail, setRegisterEmail] = useState("");
-  const [registerDisplayName, setRegisterDisplayName] = useState("");
   const [registerPassword, setRegisterPassword] = useState("");
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +112,7 @@ export default function LoginPage() {
   const [googlePending, setGooglePending] = useState(false);
   const [cognitoConfirmationRequired, setCognitoConfirmationRequired] = useState(false);
   const [cognitoConfirmationCode, setCognitoConfirmationCode] = useState("");
+  const [cognitoSignupUsername, setCognitoSignupUsername] = useState("");
 
   useEffect(() => {
     if (user) {
@@ -60,27 +134,54 @@ export default function LoginPage() {
     setPending(true);
     try {
       if (mode === "login") {
+        if (authProvider === "cognito") {
+          try {
+            await login(identifier, password);
+            router.push(nextRoute);
+            return;
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            // If this Cognito app client doesn't allow USER_PASSWORD_AUTH, fall back to Hosted UI.
+            if (message.toLowerCase().includes("user_password_auth") || message.toLowerCase().includes("flow not enabled")) {
+              await startCognitoHostedLogin(identifier);
+              return;
+            }
+            throw err;
+          }
+        }
         await login(identifier, password);
       } else {
         if (registerPassword !== registerConfirmPassword) {
           throw new Error("Passwords do not match.");
         }
 
+        const normalizedEmail = registerEmail.trim().toLowerCase();
+        if (!normalizedEmail) {
+          throw new Error("Email is required.");
+        }
+
         if (authProvider === "cognito") {
           if (!cognitoConfirmationRequired) {
+            const signupUsername = await cognitoUsernameFromEmail(normalizedEmail);
+            setCognitoSignupUsername(signupUsername);
             const signupResponse = await fetch("/api/auth/cognito/signup", {
               method: "POST",
               headers: { "Content-Type": "application/json", Accept: "application/json" },
               body: JSON.stringify({
-                username: registerUsername,
-                email: registerEmail,
+                username: signupUsername,
+                email: normalizedEmail,
                 password: registerPassword,
-                display_name: registerDisplayName.trim() || registerUsername,
               }),
             });
             const signupPayload = (await signupResponse.json()) as { nextStep?: string; error?: string };
             if (!signupResponse.ok) {
-              throw new Error(signupPayload.error || "Unable to register. Please try again.");
+              const message = signupPayload.error || "Unable to register. Please try again.";
+              if (message.toLowerCase().includes("already exists")) {
+                setCognitoConfirmationRequired(true);
+                setCognitoConfirmationCode("");
+                throw new Error("An account with the email already exists. Enter the confirmation code or resend it.");
+              }
+              throw new Error(message);
             }
             if (signupPayload.nextStep === "CONFIRM_SIGN_UP") {
               setCognitoConfirmationRequired(true);
@@ -88,23 +189,37 @@ export default function LoginPage() {
               throw new Error("Enter the confirmation code sent to your email to finish creating your account.");
             }
           } else {
+            const signupUsername = cognitoSignupUsername || (await cognitoUsernameFromEmail(normalizedEmail));
+            if (!cognitoSignupUsername) {
+              setCognitoSignupUsername(signupUsername);
+            }
             const confirmResponse = await fetch("/api/auth/cognito/confirm", {
               method: "POST",
               headers: { "Content-Type": "application/json", Accept: "application/json" },
-              body: JSON.stringify({ username: registerUsername, code: cognitoConfirmationCode }),
+              body: JSON.stringify({ username: signupUsername, code: cognitoConfirmationCode }),
             });
             const confirmPayload = (await confirmResponse.json()) as { success?: boolean; error?: string };
             if (!confirmResponse.ok) {
               throw new Error(confirmPayload.error || "Unable to confirm your account. Please try again.");
             }
-            await login(registerUsername, registerPassword);
+            try {
+              await login(normalizedEmail, registerPassword);
+              router.push(nextRoute);
+              return;
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              if (message.toLowerCase().includes("user_password_auth") || message.toLowerCase().includes("flow not enabled")) {
+                await startCognitoHostedLogin(normalizedEmail);
+                return;
+              }
+              throw err;
+            }
           }
         } else {
           await register({
-            username: registerUsername,
-            email: registerEmail,
+            username: usernameFromEmail(normalizedEmail),
+            email: normalizedEmail,
             password: registerPassword,
-            displayName: registerDisplayName.trim() || undefined,
           });
         }
       }
@@ -136,6 +251,83 @@ export default function LoginPage() {
 
   const handleGoogleError = () => {
     setError("Google sign-in was unsuccessful. Please try again.");
+  };
+
+  const startCognitoHostedLogin = async (loginHint?: string) => {
+    setError(null);
+    setPending(true);
+    try {
+      const verifier = randomStringBase64Url(64);
+      const challenge = await sha256Base64Url(verifier);
+      const stateValue = randomStringBase64Url(32);
+
+      writeSessionStorage(`${PKCE_VERIFIER_KEY_PREFIX}${stateValue}`, verifier);
+      writeSessionStorage(`${OAUTH_NEXT_KEY_PREFIX}${stateValue}`, nextRoute);
+
+      const redirect = new URL("/api/auth/cognito/hosted/login", window.location.origin);
+      redirect.searchParams.set("challenge", challenge);
+      redirect.searchParams.set("state", stateValue);
+      if (loginHint && loginHint.trim()) {
+        redirect.searchParams.set("login_hint", loginHint.trim());
+      }
+
+      window.location.assign(redirect.toString());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to start sign-in.");
+      setPending(false);
+    }
+  };
+
+  const startCognitoGoogleLogin = async () => {
+    setError(null);
+    setGooglePending(true);
+    try {
+      const verifier = randomStringBase64Url(64);
+      const challenge = await sha256Base64Url(verifier);
+      const stateValue = randomStringBase64Url(32);
+
+      writeSessionStorage(`${PKCE_VERIFIER_KEY_PREFIX}${stateValue}`, verifier);
+      writeSessionStorage(`${OAUTH_NEXT_KEY_PREFIX}${stateValue}`, nextRoute);
+
+      const redirect = new URL("/api/auth/cognito/hosted/google", window.location.origin);
+      redirect.searchParams.set("challenge", challenge);
+      redirect.searchParams.set("state", stateValue);
+
+      window.location.assign(redirect.toString());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to start Google sign-in.");
+      setGooglePending(false);
+    }
+  };
+
+  const resendCognitoConfirmationCode = async () => {
+    setError(null);
+    setPending(true);
+    try {
+      const normalizedEmail = registerEmail.trim().toLowerCase();
+      if (!normalizedEmail) {
+        throw new Error("Email is required.");
+      }
+      const signupUsername = cognitoSignupUsername || (await cognitoUsernameFromEmail(normalizedEmail));
+      if (!cognitoSignupUsername) {
+        setCognitoSignupUsername(signupUsername);
+      }
+
+      const response = await fetch("/api/auth/cognito/resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ username: signupUsername }),
+      });
+      const payload = (await response.json()) as { success?: boolean; error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to resend confirmation code.");
+      }
+      setError("Confirmation code resent. Check your email.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to resend confirmation code.");
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
@@ -188,34 +380,21 @@ export default function LoginPage() {
         ) : (
           <>
             <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
-              Username
-              <input
-                className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
-                value={registerUsername}
-                onChange={(event) => setRegisterUsername(event.target.value)}
-                required
-                autoComplete="username"
-              />
-            </label>
-            <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
               Email
               <input
                 type="email"
                 className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
                 value={registerEmail}
-                onChange={(event) => setRegisterEmail(event.target.value)}
+                onChange={(event) => {
+                  setRegisterEmail(event.target.value);
+                  if (cognitoConfirmationRequired) {
+                    setCognitoConfirmationRequired(false);
+                    setCognitoConfirmationCode("");
+                    setCognitoSignupUsername("");
+                  }
+                }}
                 required
                 autoComplete="email"
-              />
-            </label>
-            <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
-              Display name (optional)
-              <input
-                className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
-                value={registerDisplayName}
-                onChange={(event) => setRegisterDisplayName(event.target.value)}
-                placeholder="How other users will see you"
-                autoComplete="nickname"
               />
             </label>
             <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
@@ -241,18 +420,28 @@ export default function LoginPage() {
               />
             </label>
             {authProvider === "cognito" && cognitoConfirmationRequired ? (
-              <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
-                Confirmation code
-                <input
-                  className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
-                  value={cognitoConfirmationCode}
-                  onChange={(event) => setCognitoConfirmationCode(event.target.value)}
-                  placeholder="Check your email"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  required
-                />
-              </label>
+              <div className="flex flex-col gap-2">
+                <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
+                  Confirmation code
+                  <input
+                    className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
+                    value={cognitoConfirmationCode}
+                    onChange={(event) => setCognitoConfirmationCode(event.target.value)}
+                    placeholder="Check your email"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    required
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={pending || loading}
+                  onClick={() => void resendCognitoConfirmationCode()}
+                  className="self-start text-xs font-semibold text-rose-500 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Resend code
+                </button>
+              </div>
             ) : null}
           </>
         )}
@@ -267,22 +456,40 @@ export default function LoginPage() {
             : mode === "login" ? "Login" : "Register"}
         </button>
       </form>
-      {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID && mode === "login" ? (
-        <div className="mt-6 flex flex-col items-center gap-4">
-          <div className="flex w-full items-center gap-3 text-xs text-rose-400">
-            <span className="h-px flex-1 bg-rose-100" aria-hidden="true" />
-            or
-            <span className="h-px flex-1 bg-rose-100" aria-hidden="true" />
+      {mode === "login" ? (
+        authProvider === "cognito" ? (
+          <div className="mt-6 flex flex-col items-center gap-4">
+            <div className="flex w-full items-center gap-3 text-xs text-rose-400">
+              <span className="h-px flex-1 bg-rose-100" aria-hidden="true" />
+              or
+              <span className="h-px flex-1 bg-rose-100" aria-hidden="true" />
+            </div>
+            <button
+              type="button"
+              disabled={googlePending || pending || loading}
+              onClick={() => void startCognitoGoogleLogin()}
+              className="w-full rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Continue with Google
+            </button>
           </div>
-          <div className={`w-full ${googlePending ? "pointer-events-none opacity-70" : ""}`}>
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={handleGoogleError}
-              useOneTap={false}
-              theme="outline"
-            />
+        ) : process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
+          <div className="mt-6 flex flex-col items-center gap-4">
+            <div className="flex w-full items-center gap-3 text-xs text-rose-400">
+              <span className="h-px flex-1 bg-rose-100" aria-hidden="true" />
+              or
+              <span className="h-px flex-1 bg-rose-100" aria-hidden="true" />
+            </div>
+            <div className={`w-full ${googlePending ? "pointer-events-none opacity-70" : ""}`}>
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={handleGoogleError}
+                useOneTap={false}
+                theme="outline"
+              />
+            </div>
           </div>
-        </div>
+        ) : null
       ) : null}
       <div className="mt-6 text-xs text-rose-500">
         {mode === "login" ? (

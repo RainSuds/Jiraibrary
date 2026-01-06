@@ -236,49 +236,53 @@ export default function FilterHierarchicalDropdown({
           }
         }}
       >
-        <div className="flex w-full flex-1 flex-wrap items-center gap-2">
-          {selectedParents.map((value) => {
-            const option = parentMap.get(value);
-            const label = option?.label ?? value;
-            return (
-              <button
-                key={`parent-${value}`}
-                type="button"
-                className="group inline-flex items-center gap-1 rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-600 hover:bg-rose-200"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleRemoveParent(value);
-                }}
-                onKeyDown={(event) => handleChipKeyDown(event, value, handleRemoveParent)}
-              >
-                <span>{label}</span>
-                <span aria-hidden="true" className="text-sm text-rose-400 transition group-hover:text-rose-600">
-                  ×
-                </span>
-              </button>
-            );
-          })}
-          {selectedChildren.map((value) => {
-            const option = childMap.get(value);
-            const label = option?.label ?? value;
-            return (
-              <button
-                key={`child-${value}`}
-                type="button"
-                className="group inline-flex items-center gap-1 rounded-full bg-rose-50 px-3 py-1 text-xs font-medium text-rose-500 hover:bg-rose-200"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleRemoveChild(value);
-                }}
-                onKeyDown={(event) => handleChipKeyDown(event, value, handleRemoveChild)}
-              >
-                <span>{label}</span>
-                <span aria-hidden="true" className="text-sm text-rose-300 transition group-hover:text-rose-600">
-                  ×
-                </span>
-              </button>
-            );
-          })}
+        <div className="flex w-full min-w-0 flex-1 items-center gap-2">
+          {selectedParents.length > 0 || selectedChildren.length > 0 ? (
+            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+              {selectedParents.map((value) => {
+                const option = parentMap.get(value);
+                const label = option?.label ?? value;
+                return (
+                  <button
+                    key={`parent-${value}`}
+                    type="button"
+                    className="group inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-600 hover:bg-rose-200"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleRemoveParent(value);
+                    }}
+                    onKeyDown={(event) => handleChipKeyDown(event, value, handleRemoveParent)}
+                  >
+                    <span>{label}</span>
+                    <span aria-hidden="true" className="text-sm text-rose-400 transition group-hover:text-rose-600">
+                      ×
+                    </span>
+                  </button>
+                );
+              })}
+              {selectedChildren.map((value) => {
+                const option = childMap.get(value);
+                const label = option?.label ?? value;
+                return (
+                  <button
+                    key={`child-${value}`}
+                    type="button"
+                    className="group inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-50 px-3 py-1 text-xs font-medium text-rose-500 hover:bg-rose-200"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleRemoveChild(value);
+                    }}
+                    onKeyDown={(event) => handleChipKeyDown(event, value, handleRemoveChild)}
+                  >
+                    <span>{label}</span>
+                    <span aria-hidden="true" className="text-sm text-rose-300 transition group-hover:text-rose-600">
+                      ×
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
           <input
             ref={inputRef}
             id={id}
@@ -289,7 +293,7 @@ export default function FilterHierarchicalDropdown({
             }}
             onKeyDown={handleInputKeyDown}
             placeholder={selectedParents.length === 0 && selectedChildren.length === 0 ? placeholder : "Type to refine"}
-            className="flex-1 border-none bg-transparent text-sm text-rose-700 placeholder:text-rose-300 focus:outline-none"
+            className="min-w-[7rem] flex-1 border-none bg-transparent text-sm text-rose-700 placeholder:text-rose-300 focus:outline-none"
             autoComplete="off"
           />
         </div>

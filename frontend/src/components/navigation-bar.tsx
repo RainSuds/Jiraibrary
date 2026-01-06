@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ChangeEvent, FocusEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
+import { useFlash } from "@/components/flash-provider";
 import NavigationSearch from "@/components/navigation-search";
 import {
   CurrencySummary,
@@ -20,6 +21,7 @@ const CURRENCY_STORAGE_KEY = "jiraibrary.guest.currency";
 
 export default function NavigationBar() {
   const { user, logout, loading, updatePreferences } = useAuth();
+  const { addFlash } = useFlash();
   const [pending, setPending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [preferencePending, setPreferencePending] = useState(false);
@@ -40,11 +42,12 @@ export default function NavigationBar() {
     setPending(true);
     try {
       await logout();
+      addFlash({ kind: "success", title: "Signed out", message: "You have been signed out.", timeoutMs: 1500 });
       router.push("/");
     } finally {
       setPending(false);
     }
-  }, [logout, router]);
+  }, [addFlash, logout, router]);
 
   const handleMenuBlur = useCallback((event: FocusEvent<HTMLDivElement>) => {
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
@@ -119,11 +122,15 @@ export default function NavigationBar() {
       setPreferencePending(true);
       try {
         await updatePreferences(updates);
+        addFlash({ kind: "success", title: "Settings saved", message: "Your preferences have been updated.", timeoutMs: 1500 });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to update preferences.";
+        addFlash({ kind: "error", title: "Save failed", message });
       } finally {
         setPreferencePending(false);
       }
     },
-    [updatePreferences, user],
+    [addFlash, updatePreferences, user],
   );
 
   const handleLanguageChange = useCallback(
