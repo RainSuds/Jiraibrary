@@ -1,20 +1,12 @@
 import { NextResponse } from "next/server";
 
-function getEnv(name: string): string | undefined {
-  const value = process.env[name];
-  return value && value.trim().length > 0 ? value.trim() : undefined;
-}
-
-function requireEnv(name: string): string {
-  const value = getEnv(name);
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
+import { getEnv, requireEnvAny } from "@/lib/server/env";
 
 function hostedUiBaseUrl(): string {
-  const raw = requireEnv("COGNITO_HOSTED_UI_DOMAIN");
+  const raw = requireEnvAny(
+    ["COGNITO_HOSTED_UI_DOMAIN", "COGNITO_DOMAIN"],
+    "COGNITO_HOSTED_UI_DOMAIN"
+  );
   const withScheme = raw.startsWith("http://") || raw.startsWith("https://") ? raw : `https://${raw}`;
   const normalized = withScheme.replace(/\/+$/, "");
   try {
@@ -43,7 +35,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Missing PKCE challenge or state" }, { status: 400 });
     }
 
-    const clientId = requireEnv("COGNITO_USER_POOL_CLIENT_ID");
+    const clientId = requireEnvAny(
+      ["COGNITO_USER_POOL_CLIENT_ID", "COGNITO_APP_CLIENT_ID", "COGNITO_CLIENT_ID"],
+      "COGNITO_USER_POOL_CLIENT_ID"
+    );
 
     // Default redirect_uri to <origin>/auth/cognito/callback when not explicitly provided.
     const fallbackRedirect = new URL("auth/cognito/callback", url.origin).toString();
