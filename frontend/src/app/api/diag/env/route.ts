@@ -48,10 +48,10 @@ export async function GET() {
       includeSuffix: true,
     }),
 
-    // Secrets: only presence/length, no suffix.
-    COGNITO_USER_POOL_CLIENT_SECRET: reportValue(getEnv("COGNITO_USER_POOL_CLIENT_SECRET")),
-    COGNITO_CLIENT_SECRET: reportValue(getEnv("COGNITO_CLIENT_SECRET")),
-    COGNITO_APP_CLIENT_SECRET: reportValue(getEnv("COGNITO_APP_CLIENT_SECRET")),
+    // Secrets: only presence/length (no suffix). Use static access so we don't depend on dynamic env lookup.
+    COGNITO_USER_POOL_CLIENT_SECRET: reportValue(process.env.COGNITO_USER_POOL_CLIENT_SECRET),
+    COGNITO_CLIENT_SECRET: reportValue(process.env.COGNITO_CLIENT_SECRET),
+    COGNITO_APP_CLIENT_SECRET: reportValue(process.env.COGNITO_APP_CLIENT_SECRET),
   };
 
   return NextResponse.json({ ok: true, env: report }, { status: 200 });
