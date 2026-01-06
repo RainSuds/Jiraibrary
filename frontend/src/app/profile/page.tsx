@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { useFlash } from "@/components/flash-provider";
@@ -16,7 +16,7 @@ type ProfileTab = {
   description: string;
 };
 
-export default function ProfilePage() {
+function ProfilePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, token, loading, logout, updatePreferences, deleteAccount, updateProfile, refresh } = useAuth();
@@ -908,5 +908,13 @@ export default function ProfilePage() {
         </section>
       </div>
     </div>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={null}>
+      <ProfilePageContent />
+    </Suspense>
   );
 }
