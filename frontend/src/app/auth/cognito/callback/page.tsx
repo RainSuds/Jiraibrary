@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/components/auth-provider";
+import type { AuthResponse, UserProfile } from "@/lib/api";
 
 type CallbackState =
   | { status: "loading"; message?: string }
@@ -12,12 +13,37 @@ type CallbackState =
 const PKCE_VERIFIER_KEY_PREFIX = "jiraibrary.pkce.verifier.";
 const OAUTH_NEXT_KEY_PREFIX = "jiraibrary.oauth.next.";
 
-type AuthPayload = { token: string; user: unknown };
+type UnknownRecord = Record<string, unknown>;
 
-function isAuthPayload(value: unknown): value is AuthPayload {
-  if (!value || typeof value !== "object") return false;
-  const maybe = value as Record<string, unknown>;
-  return typeof maybe.token === "string" && "user" in maybe;
+function isUnknownRecord(value: unknown): value is UnknownRecord {
+  return Boolean(value) && typeof value === "object";
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function isUserProfile(value: unknown): value is UserProfile {
+  if (!isUnknownRecord(value)) return false;
+
+  const role = value.role;
+  const roleOk =
+    role === null ||
+    (isUnknownRecord(role) && typeof role.name === "string" && isStringArray(role.scopes));
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.username === "string" &&
+    typeof value.email === "string" &&
+    typeof value.display_name === "string" &&
+    typeof value.is_staff === "boolean" &&
+    roleOk
+  );
+}
+
+function isAuthResponse(value: unknown): value is AuthResponse {
+  if (!isUnknownRecord(value)) return false;
+  return typeof value.token === "string" && isUserProfile(value.user);
 }
 
 function safeNext(value: string | null): string {
@@ -105,7 +131,7 @@ export default function CognitoCallbackPage() {
         }
 
         const parsed: unknown = JSON.parse(text);
-        if (!isAuthPayload(parsed)) {
+        if (!isAuthResponse(parsed)) {
           throw new Error("Sign in failed: invalid response payload.");
         }
 

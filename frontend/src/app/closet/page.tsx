@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent, MouseEvent } from "react";
 import jsPDF from "jspdf";
 
@@ -361,7 +361,7 @@ type ClosetTab = {
   description: string;
 };
 
-export default function ClosetPage() {
+function ClosetPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, token, loading } = useAuth();
@@ -1982,5 +1982,13 @@ export default function ClosetPage() {
       ) : null}
       {entryDialogNode}
     </>
+  );
+}
+
+export default function ClosetPage() {
+  return (
+    <Suspense fallback={null}>
+      <ClosetPageContent />
+    </Suspense>
   );
 }
