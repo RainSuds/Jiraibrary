@@ -12,6 +12,14 @@ type CallbackState =
 const PKCE_VERIFIER_KEY_PREFIX = "jiraibrary.pkce.verifier.";
 const OAUTH_NEXT_KEY_PREFIX = "jiraibrary.oauth.next.";
 
+type AuthPayload = { token: string; user: unknown };
+
+function isAuthPayload(value: unknown): value is AuthPayload {
+  if (!value || typeof value !== "object") return false;
+  const maybe = value as Record<string, unknown>;
+  return typeof maybe.token === "string" && "user" in maybe;
+}
+
 function safeNext(value: string | null): string {
   if (!value) return "/profile";
   if (!value.startsWith("/") || value.startsWith("//")) return "/profile";
@@ -96,8 +104,12 @@ export default function CognitoCallbackPage() {
           throw new Error(text || `Sign in failed (${response.status})`);
         }
 
-        const auth = JSON.parse(text) as { token: string; user: unknown };
-        applyAuth(auth as any);
+        const parsed: unknown = JSON.parse(text);
+        if (!isAuthPayload(parsed)) {
+          throw new Error("Sign in failed: invalid response payload.");
+        }
+
+        applyAuth(parsed);
         router.replace(next);
       } catch (err) {
         setState({
