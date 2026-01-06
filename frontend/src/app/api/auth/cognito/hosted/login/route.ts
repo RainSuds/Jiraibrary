@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { getEnv, requireEnvAny } from "@/lib/server/env";
 
+export const runtime = "nodejs";
+
 function hostedUiBaseUrl(): string {
   const raw = requireEnvAny(
     ["COGNITO_HOSTED_UI_DOMAIN", "COGNITO_DOMAIN"],

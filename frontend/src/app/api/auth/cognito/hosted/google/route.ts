@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { getEnv, requireEnvAny } from "@/lib/server/env";
 
+export const runtime = "nodejs";
+
 function backendBaseUrl(): string {
   const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
   return base.endsWith("/") ? base : `${base}/`;
