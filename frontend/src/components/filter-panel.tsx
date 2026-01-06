@@ -16,7 +16,7 @@ import {
 } from "@/app/search/filter-constants";
 
 const SECTION_BASE_CLASSES =
-  "flex flex-col gap-2 rounded-2xl border border-rose-100 bg-white/80 shadow-sm";
+  "flex w-full min-w-0 flex-col gap-2 rounded-2xl border border-rose-100 bg-white/80 shadow-sm";
 
 function createRangeId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -789,7 +789,7 @@ export default function FilterPanel({ filters, selected, query }: FilterPanelPro
     return (
       <div
         key={range.id}
-        className="flex flex-col gap-3 rounded-xl border border-rose-100 bg-white/70 p-3"
+        className="flex max-w-full flex-col gap-3 overflow-hidden rounded-xl border border-rose-100 bg-white/70 p-3"
       >
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-rose-700">Range {index + 1}</span>
@@ -832,14 +832,14 @@ export default function FilterPanel({ filters, selected, query }: FilterPanelPro
         </div>
         <div className="flex flex-col gap-1 text-xs text-rose-400">
           <span>Adjust quickly</span>
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <input
               type="range"
               min={minBound}
               max={maxBound}
               value={sliderMinValue}
               onChange={(event) => handleMinSliderChange(Number(event.target.value))}
-              className="h-1 flex-1 min-w-0 appearance-none rounded-full bg-rose-100 accent-rose-500"
+              className="h-1 w-full flex-1 min-w-0 appearance-none rounded-full bg-rose-100 accent-rose-500"
             />
             <input
               type="range"
@@ -847,7 +847,7 @@ export default function FilterPanel({ filters, selected, query }: FilterPanelPro
               max={maxBound}
               value={sliderMaxValue}
               onChange={(event) => handleMaxSliderChange(Number(event.target.value))}
-              className="h-1 flex-1 min-w-0 appearance-none rounded-full bg-rose-100 accent-rose-500"
+              className="h-1 w-full flex-1 min-w-0 appearance-none rounded-full bg-rose-100 accent-rose-500"
             />
           </div>
         </div>
@@ -869,7 +869,7 @@ export default function FilterPanel({ filters, selected, query }: FilterPanelPro
     return (
       <div
         key={range.id}
-        className="flex flex-col gap-3 rounded-xl border border-rose-100 bg-white/70 p-3"
+        className="flex max-w-full flex-col gap-3 overflow-hidden rounded-xl border border-rose-100 bg-white/70 p-3"
       >
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-rose-700">
@@ -940,7 +940,7 @@ export default function FilterPanel({ filters, selected, query }: FilterPanelPro
         </div>
         <div className="flex flex-col gap-1 text-xs text-rose-400">
           <span>Adjust quickly</span>
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <input
               type="range"
               min={minBound}
@@ -952,7 +952,7 @@ export default function FilterPanel({ filters, selected, query }: FilterPanelPro
                   typeof range.max === "number" && range.max < value ? value : range.max;
                 onChange(range.id, { min: value, max: updatedMax });
               }}
-              className="h-1 flex-1 min-w-0 appearance-none rounded-full bg-rose-100 accent-rose-500"
+              className="h-1 w-full flex-1 min-w-0 appearance-none rounded-full bg-rose-100 accent-rose-500"
             />
             <input
               type="range"
@@ -965,7 +965,7 @@ export default function FilterPanel({ filters, selected, query }: FilterPanelPro
                   typeof range.min === "number" && range.min > value ? value : range.min;
                 onChange(range.id, { max: value, min: updatedMin });
               }}
-              className="h-1 flex-1 min-w-0 appearance-none rounded-full bg-rose-100 accent-rose-500"
+              className="h-1 w-full flex-1 min-w-0 appearance-none rounded-full bg-rose-100 accent-rose-500"
             />
           </div>
         </div>
@@ -977,7 +977,7 @@ export default function FilterPanel({ filters, selected, query }: FilterPanelPro
     <form
       action="/search"
       method="get"
-      className="flex flex-col gap-6 rounded-2xl border border-rose-100 bg-white/70 p-6 shadow-sm backdrop-blur"
+      className="flex w-full min-w-0 flex-col gap-6 rounded-2xl border border-rose-100 bg-white/70 p-6 sm:p-8 shadow-sm backdrop-blur"
       aria-label="Filters"
     >
       <input type="hidden" name="q" value={query ?? ""} />

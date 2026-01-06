@@ -68,6 +68,7 @@ let registerMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("NEXT_PUBLIC_GOOGLE_CLIENT_ID", "");
+  vi.stubEnv("NEXT_PUBLIC_AUTH_PROVIDER", "");
   syncSearchParams("");
   googleHandlers = {};
   loginMock = vi.fn().mockResolvedValue({});
@@ -160,19 +161,16 @@ describe("LoginPage", () => {
     render(<LoginPage />);
 
     await user.click(screen.getByRole("button", { name: "Need an account? Register" }));
-    await user.type(screen.getByLabelText("Username"), "newuser");
     await user.type(screen.getByLabelText("Email"), "new@example.com");
-    await user.type(screen.getByLabelText(/Display name/), " New Display ");
     await user.type(screen.getByLabelText(/^Password$/), "secretpass");
     await user.type(screen.getByLabelText("Confirm password"), "secretpass");
     await user.click(screen.getByRole("button", { name: "Register" }));
 
     await waitFor(() => {
       expect(registerMock).toHaveBeenCalledWith({
-        username: "newuser",
+        username: "new",
         email: "new@example.com",
         password: "secretpass",
-        displayName: "New Display",
       });
       expect(pushMock).toHaveBeenCalledWith("/profile");
     });
@@ -184,7 +182,6 @@ describe("LoginPage", () => {
     render(<LoginPage />);
 
     await user.click(screen.getByRole("button", { name: "Need an account? Register" }));
-    await user.type(screen.getByLabelText("Username"), "newuser");
     await user.type(screen.getByLabelText("Email"), "new@example.com");
     await user.type(screen.getByLabelText(/^Password$/), "secretpass");
     await user.type(screen.getByLabelText("Confirm password"), "different");
@@ -213,9 +210,10 @@ describe("LoginPage", () => {
     });
   });
 
-  it("logs in with Google and redirects", async () => {
+  it("logs in with Google (legacy) and redirects", async () => {
     const user = userEvent.setup();
     vi.stubEnv("NEXT_PUBLIC_GOOGLE_CLIENT_ID", "google-client");
+    vi.stubEnv("NEXT_PUBLIC_AUTH_PROVIDER", "");
 
     render(<LoginPage />);
 
@@ -227,6 +225,33 @@ describe("LoginPage", () => {
       expect(loginWithGoogleMock).toHaveBeenCalledWith("mock-token");
       expect(pushMock).toHaveBeenCalledWith("/profile");
     });
+  });
+
+  it("starts Cognito Hosted UI Google login when auth provider is cognito", async () => {
+    const user = userEvent.setup();
+    vi.stubEnv("NEXT_PUBLIC_AUTH_PROVIDER", "cognito");
+
+    const assignMock = vi.fn();
+    const originalLocation = window.location;
+    Object.defineProperty(window, "location", {
+      value: { ...originalLocation, origin: "http://localhost:3000", assign: assignMock },
+      writable: true,
+    });
+
+    render(<LoginPage />);
+
+    await user.click(screen.getByRole("button", { name: "Continue with Google" }));
+
+    await waitFor(() => {
+      expect(assignMock).toHaveBeenCalled();
+    });
+
+    const calledWith = String(assignMock.mock.calls[0]?.[0] ?? "");
+    expect(calledWith).toContain("/api/auth/cognito/hosted/google");
+    expect(calledWith).toContain("challenge=");
+    expect(calledWith).toContain("state=");
+
+    Object.defineProperty(window, "location", { value: originalLocation });
   });
 
   it("surfaces errors when Google login fails", async () => {

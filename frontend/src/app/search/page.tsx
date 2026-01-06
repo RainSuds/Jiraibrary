@@ -218,7 +218,7 @@ function ItemCard({ item }: { item: ItemSummary }) {
   return (
     <Link
       href={`/items/${encodeURIComponent(item.slug)}`}
-      className="group flex flex-col gap-3 rounded-2xl border border-rose-100 bg-white/90 p-5 shadow-sm transition hover:-translate-y-1 hover:border-rose-200 hover:shadow-lg"
+      className="group flex w-full flex-col gap-3 rounded-2xl border border-rose-100 bg-white/90 p-5 shadow-sm transition hover:-translate-y-1 hover:border-rose-200 hover:shadow-lg"
     >
       <div
         className="relative overflow-hidden rounded-xl border border-rose-50 bg-rose-50"
@@ -247,28 +247,8 @@ function ItemCard({ item }: { item: ItemSummary }) {
       <h3 className="text-lg font-semibold text-rose-900 group-hover:text-rose-700">
         {item.name}
       </h3>
-      <div className="flex flex-wrap gap-2 text-xs text-rose-500">
-        {item.category ? <span>{item.category.name}</span> : null}
-        {item.release_year ? <span>• {item.release_year}</span> : null}
-        {item.has_matching_set ? <span>• Matching set</span> : null}
-        {item.verified_source ? <span>• Verified source</span> : null}
-      </div>
-      {item.tags.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {item.tags.slice(0, 4).map((tag) => (
-            <span
-              key={tag.id}
-              className="rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-600"
-            >
-              {tag.name}
-            </span>
-          ))}
-          {item.tags.length > 4 ? (
-            <span className="text-xs text-rose-400">
-              +{item.tags.length - 4} more
-            </span>
-          ) : null}
-        </div>
+      {item.release_year ? (
+        <div className="text-xs font-medium text-rose-500">{item.release_year}</div>
       ) : null}
       {item.colors.length > 0 ? (
         <div className="flex items-center gap-2">
@@ -354,8 +334,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         />
       </section>
 
-      <div className="grid gap-12 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="flex flex-col gap-8">
+      <div className="grid grid-cols-1 gap-y-12 lg:[grid-template-columns:min-content_minmax(0,1fr)] lg:gap-x-4">
+        <aside className="flex w-full flex-col gap-8 lg:w-[360px] lg:max-w-[360px]">
           <FilterPanel
             filters={data.filters}
             selected={data.selected}
@@ -370,7 +350,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               <p>Adjust filters or try a different keyword.</p>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
               {data.results.map((item) => (
                 <ItemCard key={item.slug} item={item} />
               ))}

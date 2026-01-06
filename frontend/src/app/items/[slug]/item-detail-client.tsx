@@ -8,15 +8,20 @@ import type { FormEvent, MouseEvent } from "react";
 import FavoriteToggle from "@/components/favorite-toggle";
 import ItemGallery from "@/components/item-gallery";
 import { useAuth } from "@/components/auth-provider";
+import { useFlash } from "@/components/flash-provider";
 import {
   ImageDetail,
   ItemDetail as ItemDetailPayload,
   ItemPriceDetail,
   ItemSummary,
   PriceSummary,
+  ItemReview,
   WardrobeEntry,
+  createItemReview,
   deleteWardrobeEntry,
   getItemList,
+  listItemReviews,
+  listMyReviews,
   listWardrobeEntries,
   saveWardrobeEntry,
 } from "@/lib/api";
@@ -40,6 +45,16 @@ function titleCase(value: string): string {
     .split("_")
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(" ");
+}
+
+function formatRecommendation(value: ItemReview["recommendation"]): string {
+  if (value === "recommend") {
+    return "Recommend";
+  }
+  if (value === "not_recommend") {
+    return "Not recommend";
+  }
+  return "Mixed";
 }
 
 function formatDateTime(value: string | null | undefined): string {
@@ -174,6 +189,7 @@ type ItemDetailClientProps = {
 
 export default function ItemDetailClient({ item }: ItemDetailClientProps) {
   const { user, token } = useAuth();
+  const flash = useFlash();
   const preferredLanguage = (user?.preferred_language ?? "en").toLowerCase();
   const preferredCurrency = (user?.preferred_currency ?? "USD").toUpperCase();
   const isAuthenticated = Boolean(user && token);
@@ -234,6 +250,15 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
   const [relatedItems, setRelatedItems] = useState<ItemSummary[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
 
+  const [reviews, setReviews] = useState<ItemReview[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsError, setReviewsError] = useState<string | null>(null);
+  const [reviewRecommendation, setReviewRecommendation] = useState<ItemReview["recommendation"]>("recommend");
+  const [reviewBody, setReviewBody] = useState("");
+  const [reviewImages, setReviewImages] = useState<File[]>([]);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [pendingReviewBlock, setPendingReviewBlock] = useState<null | { itemSlug?: string; itemName?: string | null }>(null);
+
   useEffect(() => {
     const seed = relatedSeed;
     if (!seed) {
@@ -270,6 +295,106 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
       cancelled = true;
     };
   }, [item.slug, relatedSeed]);
+
+    useEffect(() => {
+      let cancelled = false;
+      async function loadReviews() {
+        setReviewsLoading(true);
+        setReviewsError(null);
+        try {
+          const entries = await listItemReviews(item.slug);
+          if (!cancelled) {
+            setReviews(entries);
+          }
+        } catch (error) {
+          if (!cancelled) {
+            console.error("Failed to load reviews", error);
+            setReviews([]);
+            setReviewsError("Failed to load reviews.");
+          }
+        } finally {
+          if (!cancelled) {
+            setReviewsLoading(false);
+          }
+        }
+      }
+      loadReviews();
+      return () => {
+        cancelled = true;
+      };
+    }, [item.slug]);
+
+    useEffect(() => {
+      if (!token) {
+        setPendingReviewBlock(null);
+        return;
+      }
+      const authToken = token;
+      let cancelled = false;
+      async function checkPendingReview(activeToken: string) {
+        try {
+          const pending = await listMyReviews(activeToken, { status: "pending", limit: 1 });
+          if (cancelled) {
+            return;
+          }
+          const first = pending[0];
+          if (!first) {
+            setPendingReviewBlock(null);
+            return;
+          }
+          setPendingReviewBlock({
+            itemSlug: first.item_slug,
+            itemName: first.item_name,
+          });
+        } catch (error) {
+          if (!cancelled) {
+            console.error("Failed to check pending review", error);
+            setPendingReviewBlock(null);
+          }
+        }
+      }
+      checkPendingReview(authToken);
+      return () => {
+        cancelled = true;
+      };
+    }, [token]);
+
+    async function handleSubmitReview(event: FormEvent) {
+      event.preventDefault();
+      if (!token) {
+        flash.addFlash({ kind: "warning", message: "Log in to submit a review." });
+        return;
+      }
+      if (pendingReviewBlock) {
+        flash.addFlash({
+          kind: "warning",
+          message: "You already have a pending review. Please wait for moderation before submitting another.",
+        });
+        return;
+      }
+      if (reviewImages.length < 1) {
+        flash.addFlash({ kind: "warning", message: "Please add at least one picture." });
+        return;
+      }
+      setReviewSubmitting(true);
+      try {
+        await createItemReview(token, item.slug, {
+          recommendation: reviewRecommendation,
+          body: reviewBody,
+          images: reviewImages,
+        });
+        setReviewBody("");
+        setReviewImages([]);
+        flash.addFlash({ kind: "success", message: "Review submitted and pending moderator approval." });
+        setPendingReviewBlock({ itemSlug: item.slug, itemName: item.translations?.[0]?.name ?? item.slug });
+      } catch (error) {
+        console.error("Failed to submit review", error);
+        const message = error instanceof Error ? error.message : "Could not submit your review.";
+        flash.addFlash({ kind: "error", message });
+      } finally {
+        setReviewSubmitting(false);
+      }
+    }
   const importantInfoRows = useMemo(
     () => [
       {
@@ -828,6 +953,131 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
               ) : null}
             </div>
           ) : null}
+
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-rose-900">Reviews</h2>
+              {reviewsLoading ? <span className="text-xs uppercase tracking-wide text-rose-400">Loading…</span> : null}
+            </div>
+
+            {reviewsError ? <p className="text-sm text-rose-500">{reviewsError}</p> : null}
+
+            {!reviewsLoading && reviews.length === 0 && !reviewsError ? (
+              <p className="text-sm text-rose-400">No reviews yet.</p>
+            ) : null}
+
+            {reviews.length > 0 ? (
+              <div className="flex flex-col gap-4">
+                {reviews.map((review) => (
+                  <div key={review.id} className="rounded-2xl border border-rose-100 bg-white/95 p-5 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex flex-col">
+                          <Link
+                            href={`/profile/${encodeURIComponent(review.author_username)}`}
+                            className="text-sm font-semibold text-rose-900 hover:underline"
+                          >
+                            {review.author_display_name || review.author_username}
+                          </Link>
+                          <span className="text-xs uppercase tracking-wide text-rose-400">
+                            {formatDateTime(review.created_at)}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700">
+                        {formatRecommendation(review.recommendation)}
+                      </span>
+                    </div>
+                    {review.body ? <p className="mt-3 whitespace-pre-line text-sm text-slate-700">{review.body}</p> : null}
+                    {review.images.length > 0 ? (
+                      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        {review.images.map((image) => (
+                          <div
+                            key={image.id}
+                            className="relative overflow-hidden rounded-xl border border-rose-100 bg-rose-50"
+                            style={{ aspectRatio: "1 / 1" }}
+                          >
+                            <Image src={image.url} alt="Review image" fill sizes="160px" className="object-cover" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {isAuthenticated ? (
+              pendingReviewBlock ? (
+                <div className="rounded-2xl border border-rose-100 bg-white/80 p-5 text-sm text-rose-500">
+                  <p className="text-sm font-semibold text-rose-900">Review submission locked</p>
+                  <p className="mt-2">
+                    You already have a pending review. Please wait for moderation before submitting another.
+                  </p>
+                  <Link href="/profile/reviews" className="mt-3 inline-flex text-sm font-semibold text-rose-700 hover:text-rose-900">
+                    View your pending review
+                  </Link>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmitReview} className="rounded-2xl border border-rose-100 bg-white/95 p-5 shadow-sm">
+                  <p className="text-sm font-semibold text-rose-900">Write a review</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <label className="flex flex-col gap-1 sm:col-span-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-rose-400">Recommendation</span>
+                      <select
+                        value={reviewRecommendation}
+                        onChange={(event) => setReviewRecommendation(event.target.value as ItemReview["recommendation"])}
+                        className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm text-rose-900"
+                        disabled={reviewSubmitting}
+                      >
+                        <option value="recommend">Recommend</option>
+                        <option value="not_recommend">Not recommend</option>
+                        <option value="mixed">Mixed</option>
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1 sm:col-span-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-rose-400">
+                        Pictures (required)
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={(event) => setReviewImages(event.target.files ? Array.from(event.target.files) : [])}
+                        className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm text-rose-900 file:mr-4 file:rounded-full file:border-0 file:bg-rose-100 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-rose-700"
+                        disabled={reviewSubmitting}
+                      />
+                    </label>
+                  </div>
+                  <label className="mt-3 flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-rose-400">Review</span>
+                    <textarea
+                      value={reviewBody}
+                      onChange={(event) => setReviewBody(event.target.value)}
+                      rows={4}
+                      className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm text-slate-700"
+                      placeholder="Share your experience..."
+                      disabled={reviewSubmitting}
+                    />
+                  </label>
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <p className="text-xs text-rose-400">Reviews are visible after moderation.</p>
+                    <button
+                      type="submit"
+                      disabled={reviewSubmitting}
+                      className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {reviewSubmitting ? "Submitting…" : "Submit"}
+                    </button>
+                  </div>
+                </form>
+              )
+            ) : (
+              <div className="rounded-2xl border border-rose-100 bg-white/80 p-5 text-sm text-rose-500">
+                Log in to submit a review.
+              </div>
+            )}
+          </div>
 
         </article>
 
