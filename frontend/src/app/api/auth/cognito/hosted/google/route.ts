@@ -11,7 +11,12 @@ function backendBaseUrl(): string {
 
 function hostedUiBaseUrl(): string {
   const raw = requireEnvAny(
-    ["COGNITO_HOSTED_UI_DOMAIN", "COGNITO_DOMAIN"],
+    [
+      "COGNITO_HOSTED_UI_DOMAIN",
+      "COGNITO_DOMAIN",
+      "NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN",
+      "NEXT_PUBLIC_COGNITO_DOMAIN",
+    ],
     "COGNITO_HOSTED_UI_DOMAIN"
   );
   const withScheme = raw.startsWith("http://") || raw.startsWith("https://")
@@ -30,7 +35,7 @@ function hostedUiBaseUrl(): string {
 }
 
 function redirectUri(): string {
-  return getEnv("COGNITO_REDIRECT_URI") ?? "";
+  return getEnv("COGNITO_REDIRECT_URI") ?? getEnv("NEXT_PUBLIC_COGNITO_REDIRECT_URI") ?? "";
 }
 
 export async function GET(request: Request) {
@@ -44,7 +49,14 @@ export async function GET(request: Request) {
     }
 
     const clientId = requireEnvAny(
-      ["COGNITO_USER_POOL_CLIENT_ID", "COGNITO_APP_CLIENT_ID", "COGNITO_CLIENT_ID"],
+      [
+        "COGNITO_USER_POOL_CLIENT_ID",
+        "COGNITO_APP_CLIENT_ID",
+        "COGNITO_CLIENT_ID",
+        "NEXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID",
+        "NEXT_PUBLIC_COGNITO_APP_CLIENT_ID",
+        "NEXT_PUBLIC_COGNITO_CLIENT_ID",
+      ],
       "COGNITO_USER_POOL_CLIENT_ID"
     );
 
