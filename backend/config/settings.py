@@ -30,6 +30,7 @@ env = environ.Env(
     COGNITO_REGION=(str, ""),
     COGNITO_USER_POOL_ID=(str, ""),
     COGNITO_APP_CLIENT_ID=(str, ""),
+    COGNITO_USER_POOL_CLIENT_ID=(str, ""),
     STATIC_URL=(str, "static/"),
     MEDIA_URL=(str, "media/"),
     AWS_STORAGE_BUCKET_NAME=(str, ""),
@@ -114,7 +115,7 @@ else:
 
 COGNITO_REGION = env("COGNITO_REGION")
 COGNITO_USER_POOL_ID = env("COGNITO_USER_POOL_ID")
-COGNITO_APP_CLIENT_ID = env("COGNITO_APP_CLIENT_ID")
+COGNITO_APP_CLIENT_ID = env("COGNITO_APP_CLIENT_ID") or env("COGNITO_USER_POOL_CLIENT_ID")
 
 
 DEBUG = env.bool("DEBUG")
