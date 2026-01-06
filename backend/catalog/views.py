@@ -5,7 +5,10 @@ from typing import Any, cast
 from uuid import UUID
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db.models import Count, Max, Min, Prefetch, Q, QuerySet
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import generics, mixins, permissions, status, viewsets
 from rest_framework.exceptions import MethodNotAllowed, PermissionDenied
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -14,6 +17,9 @@ from rest_framework.request import Request
 
 from . import filters, models, serializers
 from .permissions import IsCatalogEditor, IsImageOwnerOrCatalogEditor
+
+
+UserModel = get_user_model()
 
 
 def _is_uuid_value(value: Any) -> bool:
@@ -990,6 +996,11 @@ class ItemFavoriteViewSet(
                 queryset = queryset.filter(slug_filter | Q(item__id=item_param))
             else:
                 queryset = queryset.filter(slug_filter)
+        status_param = request.query_params.get("status")
+        if status_param:
+            normalized_status = status_param.strip().lower()
+            if normalized_status in models.WardrobeEntry.EntryStatus.values:
+                queryset = queryset.filter(status=normalized_status)
         return queryset
 
     def create(self, request, *args, **kwargs):  # type: ignore[override]
@@ -1001,6 +1012,71 @@ class ItemFavoriteViewSet(
             item=item,
         )
         output = self.get_serializer(favorite)
+        return Response(output.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+class WardrobeEntryViewSet(
+    mixins.CreateModelMixin,
+    mixins.DestroyModelMixin,
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    serializer_class = serializers.WardrobeEntrySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+    lookup_field = "pk"
+
+    def get_queryset(self):  # type: ignore[override]
+        request = cast(Request, self.request)
+        queryset: QuerySet[models.WardrobeEntry] = (
+            models.WardrobeEntry.objects.select_related("item", "item__brand", "item__category")
+            .filter(user=request.user)
+            .order_by("-created_at")
+        )
+        item_param = request.query_params.get("item")
+        if item_param:
+            slug_filter = Q(item__slug=item_param)
+            if _is_uuid_value(item_param):
+                queryset = queryset.filter(slug_filter | Q(item__id=item_param))
+            else:
+                queryset = queryset.filter(slug_filter)
+        status_param = request.query_params.get("status")
+        if status_param:
+            normalized_status = status_param.strip().lower()
+            if normalized_status in models.WardrobeEntry.EntryStatus.values:
+                queryset = queryset.filter(status=normalized_status)
+        return queryset
+
+    def create(self, request, *args, **kwargs):  # type: ignore[override]
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        item = serializer.validated_data["item"]
+        mutable_fields = [
+            "status",
+            "note",
+            "is_public",
+            "colors",
+            "size",
+            "acquired_date",
+            "arrival_date",
+            "source",
+            "price_paid",
+            "currency",
+            "was_gift",
+        ]
+        defaults = {}
+        for field in mutable_fields:
+            if field in serializer.validated_data:
+                value = serializer.validated_data[field]
+                if field == "colors" and value is not None:
+                    value = list(value)
+                defaults[field] = value
+        entry, created = models.WardrobeEntry.objects.update_or_create(
+            user=request.user,
+            item=item,
+            defaults=defaults,
+        )
+        output = self.get_serializer(entry)
         return Response(output.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
@@ -1103,4 +1179,178 @@ class UserSubmissionListView(generics.ListAPIView):
             statuses = [value.strip() for value in status_param.split(",") if value and value.strip()]
             if statuses:
                 queryset = queryset.filter(status__in=statuses)
+        return queryset
+
+
+class PublicUserSubmissionListView(generics.ListAPIView):
+    serializer_class = serializers.UserSubmissionSummarySerializer
+    permission_classes = [permissions.AllowAny]
+    pagination_class = None
+
+    def get_queryset(self):  # type: ignore[override]
+        request = cast(Request, self.request)
+        username = (self.kwargs.get("username") or "").strip()
+        user = get_object_or_404(UserModel, username__iexact=username)
+        queryset: QuerySet[models.ItemSubmission] = (
+            models.ItemSubmission.objects.filter(user=user, status=models.ItemSubmission.SubmissionStatus.APPROVED)
+            .select_related("linked_item")
+            .order_by("-updated_at")
+        )
+
+        limit = request.query_params.get("limit")
+        if limit:
+            try:
+                queryset = queryset[: max(int(limit), 0)]
+            except (TypeError, ValueError):
+                pass
+        return queryset
+
+
+class ItemReviewListCreateView(generics.ListCreateAPIView):
+    parser_classes = [MultiPartParser, FormParser]
+    pagination_class = None
+
+    def get_permissions(self):  # type: ignore[override]
+        if self.request.method.upper() == "POST":
+            return [permissions.IsAuthenticated()]
+        return [permissions.AllowAny()]
+
+    def get_queryset(self):  # type: ignore[override]
+        request = cast(Request, self.request)
+        item = get_object_or_404(models.Item, slug=self.kwargs.get("slug"))
+        queryset = (
+            models.ItemReview.objects.filter(item=item, status=models.ItemReview.ModerationStatus.APPROVED)
+            .select_related("author", "author__profile")
+            .prefetch_related("images")
+            .order_by("-created_at")
+        )
+        limit = request.query_params.get("limit")
+        if limit:
+            try:
+                queryset = queryset[: max(int(limit), 0)]
+            except (TypeError, ValueError):
+                pass
+        return queryset
+
+    def get_serializer_class(self):  # type: ignore[override]
+        if self.request.method.upper() == "POST":
+            return serializers.ItemReviewCreateSerializer
+        return serializers.ItemReviewSerializer
+
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:  # type: ignore[override]
+        item = get_object_or_404(models.Item, slug=kwargs.get("slug"))
+        if models.ItemReview.objects.filter(author=request.user, status=models.ItemReview.ModerationStatus.PENDING).exists():
+            return Response(
+                {"detail": "You already have a pending review. Please wait for moderation before submitting another."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if models.ItemReview.objects.filter(item=item, author=request.user).exists():
+            return Response({"detail": "You have already reviewed this item."}, status=status.HTTP_409_CONFLICT)
+
+        files = request.FILES.getlist("images") or request.FILES.getlist("images[]")
+        if not files:
+            return Response({"detail": "At least one picture is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated = cast(dict[str, Any], serializer.validated_data)
+        review = models.ItemReview.objects.create(
+            item=item,
+            author=request.user,
+            recommendation=validated["recommendation"],
+            body=validated.get("body", "") or "",
+            status=models.ItemReview.ModerationStatus.PENDING,
+        )
+        for file in files:
+            models.ReviewImage.objects.create(
+                review=review,
+                image_file=file,
+                uploaded_by=request.user,
+            )
+        output = serializers.ItemReviewSerializer(review, context=self.get_serializer_context())
+        return Response(output.data, status=status.HTTP_201_CREATED)
+
+
+class ItemReviewModerateView(generics.UpdateAPIView):
+    queryset = models.ItemReview.objects.select_related("author", "item").all()
+    serializer_class = serializers.ItemReviewSerializer
+    permission_classes = [permissions.IsAdminUser]
+    http_method_names = ["patch", "options", "head"]
+
+    def patch(self, request: Request, *args: Any, **kwargs: Any) -> Response:  # type: ignore[override]
+        review: models.ItemReview = self.get_object()
+        next_status = (request.data.get("status") or "").strip().lower()
+        note = (request.data.get("moderation_note") or "").strip()
+        if next_status not in {
+            models.ItemReview.ModerationStatus.APPROVED,
+            models.ItemReview.ModerationStatus.REJECTED,
+        }:
+            return Response({"detail": "Status must be 'approved' or 'rejected'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        review.status = next_status
+        review.moderation_note = note
+        review.moderated_by = request.user
+        review.moderated_at = timezone.now()
+        review.save(update_fields=["status", "moderation_note", "moderated_by", "moderated_at", "updated_at"])
+        output = self.get_serializer(review)
+        return Response(output.data, status=status.HTTP_200_OK)
+
+
+class PublicUserReviewListView(generics.ListAPIView):
+    serializer_class = serializers.ItemReviewSerializer
+    permission_classes = [permissions.AllowAny]
+    pagination_class = None
+
+    def get_queryset(self):  # type: ignore[override]
+        request = cast(Request, self.request)
+        username = (self.kwargs.get("username") or "").strip()
+        user = get_object_or_404(UserModel, username__iexact=username)
+        queryset = (
+            models.ItemReview.objects.filter(author=user, status=models.ItemReview.ModerationStatus.APPROVED)
+            .select_related("item", "author", "author__profile")
+            .prefetch_related("images")
+            .order_by("-created_at")
+        )
+
+        limit = request.query_params.get("limit")
+        if limit:
+            try:
+                queryset = queryset[: max(int(limit), 0)]
+            except (TypeError, ValueError):
+                pass
+        return queryset
+
+
+class MyReviewListView(generics.ListAPIView):
+    serializer_class = serializers.MyItemReviewSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):  # type: ignore[override]
+        request = cast(Request, self.request)
+        queryset = (
+            models.ItemReview.objects.filter(author=request.user)
+            .select_related("item", "author", "author__profile")
+            .prefetch_related("images")
+            .order_by("-created_at")
+        )
+
+        raw_status = (request.query_params.get("status") or "").strip()
+        if raw_status:
+            statuses = [value.strip().lower() for value in raw_status.split(",") if value and value.strip()]
+            allowed = {
+                models.ItemReview.ModerationStatus.PENDING,
+                models.ItemReview.ModerationStatus.APPROVED,
+                models.ItemReview.ModerationStatus.REJECTED,
+            }
+            filtered = [value for value in statuses if value in allowed]
+            if filtered:
+                queryset = queryset.filter(status__in=filtered)
+
+        limit = request.query_params.get("limit")
+        if limit:
+            try:
+                queryset = queryset[: max(int(limit), 0)]
+            except (TypeError, ValueError):
+                pass
         return queryset

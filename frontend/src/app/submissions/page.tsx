@@ -61,7 +61,7 @@ export default function SubmissionsPage() {
         if (!cancelled) {
           setSubmissions(data);
         }
-      } catch (error) {
+      } catch {
         if (!cancelled) {
           setSubmissionsError("Unable to load submissions right now. Please try again.");
         }
@@ -89,7 +89,7 @@ export default function SubmissionsPage() {
       try {
         await deleteSubmissionDraft(token, draftId);
         setSubmissions((current) => current.filter((submission) => submission.id !== draftId));
-      } catch (error) {
+      } catch {
         setSubmissionActionError("Unable to delete that draft. Please try again.");
       } finally {
         setPendingDeleteIds((current) => {

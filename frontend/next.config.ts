@@ -40,6 +40,10 @@ const remotePatterns: RemotePattern[] = [
     protocol: "https",
     hostname: "**.cloudfront.net",
   },
+  {
+    protocol: "https",
+    hostname: "placehold.co",
+  },
 ];
 
 const rawMediaHost = process.env.NEXT_PUBLIC_MEDIA_HOST;

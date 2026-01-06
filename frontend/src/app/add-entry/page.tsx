@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -2950,9 +2951,12 @@ function AddEntryPageContent() {
                 {previewHeroImage ? (
                   <div className="space-y-3">
                     <div className="overflow-hidden rounded-3xl border border-rose-100 bg-rose-50">
-                      <img
+                      <Image
                         src={previewHeroImage.url}
                         alt={previewSnapshot.title ? `${previewSnapshot.title} reference image` : "Reference image"}
+                        width={1280}
+                        height={720}
+                        sizes="(max-width: 768px) 100vw, 640px"
                         className="h-80 w-full object-cover"
                       />
                     </div>
@@ -2960,9 +2964,12 @@ function AddEntryPageContent() {
                       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                         {previewSecondaryImages.map((image, index) => (
                           <div key={image.id ?? `${image.url}-${index}`} className="overflow-hidden rounded-2xl border border-rose-100">
-                            <img
+                            <Image
                               src={image.url}
                               alt={previewSnapshot.title ? `${previewSnapshot.title} image ${index + 2}` : "Preview thumbnail"}
+                              width={400}
+                              height={320}
+                              sizes="(max-width: 768px) 50vw, 200px"
                               className="h-28 w-full object-cover"
                             />
                           </div>

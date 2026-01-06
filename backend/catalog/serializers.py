@@ -1295,6 +1295,107 @@ class ItemFavoriteSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "item_detail", "created_at"]
 
 
+class WardrobeEntrySerializer(serializers.ModelSerializer):
+    item = serializers.SlugRelatedField(slug_field="slug", queryset=models.Item.objects.all())
+    item_detail = ItemSummarySerializer(source="item", read_only=True)
+    colors = serializers.ListField(
+        child=serializers.CharField(max_length=64), required=False, allow_empty=True
+    )
+
+    class Meta:
+        model = models.WardrobeEntry
+        fields = [
+            "id",
+            "item",
+            "item_detail",
+            "status",
+            "is_public",
+            "note",
+            "colors",
+            "size",
+            "acquired_date",
+            "arrival_date",
+            "source",
+            "price_paid",
+            "currency",
+            "was_gift",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "item_detail", "created_at", "updated_at"]
+        extra_kwargs = {
+            "note": {"required": False, "allow_blank": True},
+            "size": {"required": False, "allow_blank": True},
+            "source": {"required": False, "allow_blank": True},
+            "currency": {"required": False, "allow_blank": True},
+        }
+
+    def validate_note(self, value: str) -> str:  # type: ignore[override]
+        return value.strip()
+
+    def validate_size(self, value: str) -> str:  # type: ignore[override]
+        return value.strip()
+
+    def validate_source(self, value: str) -> str:  # type: ignore[override]
+        return value.strip()
+
+    def validate_currency(self, value: str) -> str:  # type: ignore[override]
+        cleaned = value.strip().upper()
+        if cleaned and len(cleaned) != 3:
+            raise serializers.ValidationError("Currency codes must be ISO-4217 (3 characters).")
+        return cleaned
+
+    def validate_price_paid(self, value: Optional[Decimal]) -> Optional[Decimal]:  # type: ignore[override]
+        if value is not None and value < Decimal("0.00"):
+            raise serializers.ValidationError("Price must be zero or positive.")
+        return value
+
+    def validate_colors(self, value: List[str]) -> List[str]:  # type: ignore[override]
+        cleaned: List[str] = []
+        for color in value:
+            normalized = color.strip()
+            if not normalized:
+                continue
+            cleaned.append(normalized)
+        return cleaned
+
+    def validate(self, attrs: Dict[str, Any]) -> Dict[str, Any]:  # type: ignore[override]
+        instance = cast(Optional[models.WardrobeEntry], getattr(self, "instance", None))
+        status = attrs.get("status", getattr(instance, "status", models.WardrobeEntry.EntryStatus.OWNED))
+        was_gift = attrs.get("was_gift", getattr(instance, "was_gift", False))
+        price_paid = attrs.get("price_paid", getattr(instance, "price_paid", None))
+        currency = attrs.get("currency", getattr(instance, "currency", ""))
+        acquired_date = attrs.get("acquired_date", getattr(instance, "acquired_date", None))
+        arrival_date = attrs.get("arrival_date", getattr(instance, "arrival_date", None))
+
+        if was_gift and price_paid:
+            raise serializers.ValidationError({
+                "price_paid": "Gifted items should not include a purchase price.",
+            })
+
+        if price_paid and not currency:
+            raise serializers.ValidationError({
+                "currency": "Currency is required when specifying a price.",
+            })
+
+        if currency and not (price_paid or was_gift):
+            raise serializers.ValidationError({
+                "price_paid": "Price (or mark as gift) is required when currency is provided.",
+            })
+
+        if status == models.WardrobeEntry.EntryStatus.WISHLIST and acquired_date:
+            raise serializers.ValidationError({
+                "acquired_date": "Wishlist entries cannot have an acquired date.",
+            })
+
+        if acquired_date and arrival_date and arrival_date < acquired_date:
+            raise serializers.ValidationError({
+                "arrival_date": "Arrival date cannot be earlier than the acquired date.",
+            })
+
+        return attrs
+
+
 class ItemSubmissionNameSerializer(serializers.Serializer):
     language = serializers.CharField()
     value = serializers.CharField()
@@ -1410,14 +1511,18 @@ class ItemSubmissionSizeMeasurementSerializer(serializers.Serializer):
 
 
 class UserSubmissionSummarySerializer(serializers.ModelSerializer):
+    linked_item = serializers.SlugField(source="linked_item.slug", read_only=True)
+
     class Meta:
         model = models.ItemSubmission
         fields = [
             "id",
+            "item_slug",
             "title",
             "brand_name",
             "brand_slug",
             "status",
+            "linked_item",
             "created_at",
             "updated_at",
             "release_year",
@@ -1883,3 +1988,67 @@ class ItemSubmissionSerializer(serializers.ModelSerializer):
         if isinstance(value, bool):
             return value
         return True
+
+
+class ReviewImageSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.ReviewImage
+        fields = ["id", "url", "created_at"]
+
+    def get_url(self, obj: models.ReviewImage) -> str:
+        return obj.media_url
+
+
+class ItemReviewSerializer(serializers.ModelSerializer):
+    images = ReviewImageSerializer(many=True, read_only=True)
+    item_slug = serializers.SlugField(source="item.slug", read_only=True)
+    item_name = serializers.SerializerMethodField()
+    author_username = serializers.CharField(source="author.username", read_only=True)
+    author_display_name = serializers.SerializerMethodField()
+    author_avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.ItemReview
+        fields = [
+            "id",
+            "item",
+            "item_slug",
+            "item_name",
+            "recommendation",
+            "body",
+            "status",
+            "created_at",
+            "author_username",
+            "author_display_name",
+            "author_avatar_url",
+            "images",
+        ]
+
+    def get_item_name(self, obj: models.ItemReview) -> str | None:
+        item = getattr(obj, "item", None)
+        if not item:
+            return None
+        return item.display_name() if hasattr(item, "display_name") else getattr(item, "slug", None)
+
+    def get_author_display_name(self, obj: models.ItemReview) -> str | None:
+        profile = getattr(obj.author, "profile", None)
+        return getattr(profile, "display_name", None) or None
+
+    def get_author_avatar_url(self, obj: models.ItemReview) -> str | None:
+        profile = getattr(obj.author, "profile", None)
+        return getattr(profile, "avatar_url", None) or None
+
+
+class ItemReviewCreateSerializer(serializers.Serializer):
+    recommendation = serializers.ChoiceField(choices=models.ItemReview.Recommendation.choices)
+    body = serializers.CharField(allow_blank=True, required=False)
+
+
+class MyItemReviewSerializer(ItemReviewSerializer):
+    class Meta(ItemReviewSerializer.Meta):
+        fields = ItemReviewSerializer.Meta.fields + [
+            "moderated_at",
+            "moderation_note",
+        ]

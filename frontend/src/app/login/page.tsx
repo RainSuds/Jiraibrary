@@ -25,6 +25,7 @@ export default function LoginPage() {
   }, []);
 
   const { login, loginWithGoogle, register, loading, user } = useAuth();
+  const authProvider = (process.env.NEXT_PUBLIC_AUTH_PROVIDER ?? "").toLowerCase();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -36,6 +37,8 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [googlePending, setGooglePending] = useState(false);
+  const [cognitoConfirmationRequired, setCognitoConfirmationRequired] = useState(false);
+  const [cognitoConfirmationCode, setCognitoConfirmationCode] = useState("");
 
   useEffect(() => {
     if (user) {
@@ -62,12 +65,48 @@ export default function LoginPage() {
         if (registerPassword !== registerConfirmPassword) {
           throw new Error("Passwords do not match.");
         }
-        await register({
-          username: registerUsername,
-          email: registerEmail,
-          password: registerPassword,
-          displayName: registerDisplayName.trim() || undefined,
-        });
+
+        if (authProvider === "cognito") {
+          if (!cognitoConfirmationRequired) {
+            const signupResponse = await fetch("/api/auth/cognito/signup", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              body: JSON.stringify({
+                username: registerUsername,
+                email: registerEmail,
+                password: registerPassword,
+                display_name: registerDisplayName.trim() || registerUsername,
+              }),
+            });
+            const signupPayload = (await signupResponse.json()) as { nextStep?: string; error?: string };
+            if (!signupResponse.ok) {
+              throw new Error(signupPayload.error || "Unable to register. Please try again.");
+            }
+            if (signupPayload.nextStep === "CONFIRM_SIGN_UP") {
+              setCognitoConfirmationRequired(true);
+              setCognitoConfirmationCode("");
+              throw new Error("Enter the confirmation code sent to your email to finish creating your account.");
+            }
+          } else {
+            const confirmResponse = await fetch("/api/auth/cognito/confirm", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              body: JSON.stringify({ username: registerUsername, code: cognitoConfirmationCode }),
+            });
+            const confirmPayload = (await confirmResponse.json()) as { success?: boolean; error?: string };
+            if (!confirmResponse.ok) {
+              throw new Error(confirmPayload.error || "Unable to confirm your account. Please try again.");
+            }
+            await login(registerUsername, registerPassword);
+          }
+        } else {
+          await register({
+            username: registerUsername,
+            email: registerEmail,
+            password: registerPassword,
+            displayName: registerDisplayName.trim() || undefined,
+          });
+        }
       }
       router.push(nextRoute);
     } catch (err) {
@@ -201,6 +240,20 @@ export default function LoginPage() {
                 autoComplete="new-password"
               />
             </label>
+            {authProvider === "cognito" && cognitoConfirmationRequired ? (
+              <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
+                Confirmation code
+                <input
+                  className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
+                  value={cognitoConfirmationCode}
+                  onChange={(event) => setCognitoConfirmationCode(event.target.value)}
+                  placeholder="Check your email"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  required
+                />
+              </label>
+            ) : null}
           </>
         )}
         {error ? <p className="text-sm text-rose-600">{error}</p> : null}

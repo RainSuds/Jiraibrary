@@ -31,6 +31,71 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const STORAGE_KEY = "jiraibrary.auth.token";
+const AUTH_COOKIE_NAME = "jiraibrary_auth_token";
+const AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+const SYNC_SESSION_ENDPOINT = "/api/auth/session";
+
+const syncServerCookie = async (value: string | null) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  let endpoint = SYNC_SESSION_ENDPOINT;
+  try {
+    endpoint = new URL(SYNC_SESSION_ENDPOINT, window.location.origin).toString();
+  } catch {
+    // fall back to the relative endpoint
+  }
+  try {
+    if (value) {
+      await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: value }),
+      });
+    } else {
+      await fetch(endpoint, { method: "DELETE" });
+    }
+  } catch (error) {
+    console.warn("Failed to sync auth cookie", error);
+  }
+};
+
+const persistAuthToken = (value: string | null) => {
+  if (typeof window !== "undefined") {
+    if (value) {
+      window.localStorage.setItem(STORAGE_KEY, value);
+    } else {
+      window.localStorage.removeItem(STORAGE_KEY);
+    }
+  }
+  if (typeof document !== "undefined") {
+    if (value) {
+      document.cookie = `${AUTH_COOKIE_NAME}=${value}; path=/; max-age=${AUTH_COOKIE_MAX_AGE}; sameSite=Lax`;
+    } else {
+      document.cookie = `${AUTH_COOKIE_NAME}=; path=/; max-age=0; sameSite=Lax`;
+    }
+  }
+};
+
+const readStoredToken = (): string | null => {
+  if (typeof window !== "undefined") {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      return stored;
+    }
+  }
+  if (typeof document !== "undefined") {
+    const match = document.cookie
+      .split(";")
+      .map((entry) => entry.trim())
+      .find((entry) => entry.startsWith(`${AUTH_COOKIE_NAME}=`));
+    if (match) {
+      const [, token] = match.split("=");
+      return token || null;
+    }
+  }
+  return null;
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
@@ -43,9 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const profile = await getCurrentUser(authToken);
       setToken(authToken);
       setUser(profile);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(STORAGE_KEY, authToken);
-      }
+      persistAuthToken(authToken);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         console.info("Stored session token expired; clearing it.");
@@ -54,16 +117,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setToken(null);
       setUser(null);
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem(STORAGE_KEY);
-      }
+      persistAuthToken(null);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    const stored = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
+    const stored = readStoredToken();
     if (!stored) {
       setLoading(false);
       return;
@@ -76,12 +137,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const auth = await apiLogin(identifier, password);
+      const normalized = auth.user;
       setToken(auth.token);
-      setUser(auth.user);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(STORAGE_KEY, auth.token);
-      }
-      return auth;
+      setUser(normalized);
+      persistAuthToken(auth.token);
+      return { ...auth, user: normalized };
     } finally {
       setLoading(false);
     }
@@ -91,12 +151,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const auth = await apiLoginWithGoogle(idToken);
+      const normalized = auth.user;
       setToken(auth.token);
-      setUser(auth.user);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(STORAGE_KEY, auth.token);
-      }
-      return auth;
+      setUser(normalized);
+      persistAuthToken(auth.token);
+      return { ...auth, user: normalized };
     } finally {
       setLoading(false);
     }
@@ -106,12 +165,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const auth = await apiRegister(payload);
+      const normalized = auth.user;
       setToken(auth.token);
-      setUser(auth.user);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(STORAGE_KEY, auth.token);
-      }
-      return auth;
+      setUser(normalized);
+      persistAuthToken(auth.token);
+      return { ...auth, user: normalized };
     } finally {
       setLoading(false);
     }
@@ -127,9 +185,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.warn("Logout request failed", error);
     } finally {
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem(STORAGE_KEY);
-      }
+      persistAuthToken(null);
       setToken(null);
       setUser(null);
     }
@@ -141,6 +197,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     await hydrate(token);
   };
+
+  useEffect(() => {
+    persistAuthToken(token);
+    void syncServerCookie(token);
+  }, [token]);
 
   const updatePreferences = useCallback(
     async (payload: UpdateUserPreferencesPayload) => {

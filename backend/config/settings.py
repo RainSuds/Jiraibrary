@@ -1,22 +1,65 @@
 """Django settings for the Jiraibrary backend."""
 
 from __future__ import annotations
-import os
 import json
-import boto3
-import urllib.parse
 import logging
+import os
 import sys
-from typing import cast
+import urllib.parse
+from pathlib import Path
+from typing import Any, cast
+
+import boto3
+import environ
+from django.core.exceptions import ImproperlyConfigured
+from django.core.management.utils import get_random_secret_key
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger("settings")
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+env = environ.Env(
+    DEBUG=(bool, False),
+    SECRET_KEY=(str, ""),
+    ALLOWED_HOSTS=(list, ["localhost", "127.0.0.1"]),
+    CORS_ALLOW_ALL_ORIGINS=(bool, False),
+    CORS_ALLOWED_ORIGINS=(list, []),
+    CSRF_TRUSTED_ORIGINS=(list, []),
+    GOOGLE_OAUTH_CLIENT_IDS=(list, []),
+    COGNITO_REGION=(str, ""),
+    COGNITO_USER_POOL_ID=(str, ""),
+    COGNITO_APP_CLIENT_ID=(str, ""),
+    STATIC_URL=(str, "static/"),
+    MEDIA_URL=(str, "media/"),
+    AWS_STORAGE_BUCKET_NAME=(str, ""),
+    AWS_S3_REGION_NAME=(str, ""),
+    AWS_S3_CUSTOM_DOMAIN=(str, ""),
+    AWS_S3_ENDPOINT_URL=(str, ""),
+    AWS_S3_SIGNATURE_VERSION=(str, "s3v4"),
+    AWS_S3_STATIC_LOCATION=(str, "static"),
+    AWS_S3_MEDIA_LOCATION=(str, "media"),
+    AWS_QUERYSTRING_AUTH=(bool, False),
+    AWS_DEFAULT_ACL=(str, ""),
+    AWS_S3_FILE_OVERWRITE=(bool, True),
+    DATABASE_REQUIRE_SSL=(bool, False),
+    DB_CONN_MAX_AGE=(int, 60),
+)
+
+# Read environment files with override support (do this early so DB config is available).
+_env_override = os.getenv("DJANGO_ENV_FILE")
+if _env_override:
+    environ.Env.read_env(_env_override)
+else:
+    for _candidate in (BASE_DIR / ".env", BASE_DIR / ".env.local"):
+        if _candidate.exists():
+            environ.Env.read_env(_candidate)
+
 secret_arn = os.getenv("DATABASE_SECRET_ARN")
 region = os.getenv("AWS_REGION", "us-east-2")
 
-logger.info(f"DATABASE_SECRET_ARN: {secret_arn}")
-logger.info(f"AWS_REGION: {region}")
+logger.info("DATABASE_SECRET_ARN set: %s", bool(secret_arn))
+logger.info("AWS_REGION: %s", region)
 
 db_username = os.getenv("DB_USERNAME")
 db_password = os.getenv("DB_PASSWORD")
@@ -49,69 +92,29 @@ if all([db_username, db_password, db_host, db_name]):
         cast(str, db_name),
     )
 elif secret_arn:
-    try:
-        sm = boto3.client("secretsmanager", region_name=region)
-        secret_value = json.loads(sm.get_secret_value(SecretId=secret_arn)["SecretString"])
-        logger.info("Fetched secret keys: %s", list(secret_value.keys()))
-        _set_database_url(
-            secret_value["username"],
-            secret_value["password"],
-            secret_value["host"],
-            secret_value.get("port", "5432"),
-            secret_value["dbname"],
-        )
-    except Exception as e:
-        logger.error(f"Failed to fetch or parse DB secret: {e}")
+    if "://" in secret_arn:
+        os.environ["DATABASE_URL"] = secret_arn
+        logger.info("DATABASE_SECRET_ARN looks like a database URL; using it as DATABASE_URL.")
+    else:
+        try:
+            sm = boto3.client("secretsmanager", region_name=region)
+            secret_value = json.loads(sm.get_secret_value(SecretId=secret_arn)["SecretString"])
+            logger.info("Fetched DB secret payload from Secrets Manager.")
+            _set_database_url(
+                secret_value["username"],
+                secret_value["password"],
+                secret_value["host"],
+                secret_value.get("port", "5432"),
+                secret_value["dbname"],
+            )
+        except Exception as e:
+            logger.error("Failed to fetch or parse DB secret: %s", e)
 else:
     logger.warning("DATABASE_SECRET_ARN not set; will use default/fallback DB config.")
 
-import os
-from pathlib import Path
-from typing import Any
-
-import environ
-from django.core.exceptions import ImproperlyConfigured
-from django.core.management.utils import get_random_secret_key
-
-
-import json
-import boto3
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-
-env = environ.Env(
-    DEBUG=(bool, False),
-    SECRET_KEY=(str, ""),
-    ALLOWED_HOSTS=(list, ["localhost", "127.0.0.1"]),
-    CORS_ALLOW_ALL_ORIGINS=(bool, False),
-    CORS_ALLOWED_ORIGINS=(list, []),
-    CSRF_TRUSTED_ORIGINS=(list, []),
-    GOOGLE_OAUTH_CLIENT_IDS=(list, []),
-    STATIC_URL=(str, "static/"),
-    MEDIA_URL=(str, "media/"),
-    AWS_STORAGE_BUCKET_NAME=(str, ""),
-    AWS_S3_REGION_NAME=(str, ""),
-    AWS_S3_CUSTOM_DOMAIN=(str, ""),
-    AWS_S3_ENDPOINT_URL=(str, ""),
-    AWS_S3_SIGNATURE_VERSION=(str, "s3v4"),
-    AWS_S3_STATIC_LOCATION=(str, "static"),
-    AWS_S3_MEDIA_LOCATION=(str, "media"),
-    AWS_QUERYSTRING_AUTH=(bool, False),
-    AWS_DEFAULT_ACL=(str, ""),
-    AWS_S3_FILE_OVERWRITE=(bool, True),
-    DATABASE_REQUIRE_SSL=(bool, False),
-    DB_CONN_MAX_AGE=(int, 60),
-)
-
-# Read environment files with override support
-_env_override = os.getenv("DJANGO_ENV_FILE")
-if _env_override:
-    environ.Env.read_env(_env_override)
-else:
-    for _candidate in (BASE_DIR / ".env", BASE_DIR / ".env.local"):
-        if _candidate.exists():
-            environ.Env.read_env(_candidate)
+COGNITO_REGION = env("COGNITO_REGION")
+COGNITO_USER_POOL_ID = env("COGNITO_USER_POOL_ID")
+COGNITO_APP_CLIENT_ID = env("COGNITO_APP_CLIENT_ID")
 
 
 DEBUG = env.bool("DEBUG")

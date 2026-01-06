@@ -4,6 +4,7 @@ apprunner-source.json
 .env*
 *.env*
 *secret*.json
+!*.example
 *secrets*.json
 *config*.json
 *credentials*.json
@@ -65,6 +66,9 @@ postgres_data/
 frontend/.next/
 frontend/node_modules/
 node_modules/*
+/package-lock.json
+/vitest.tap
+frontend/vitest-report.xml
 *.py[co]
 *.sqlite3
 !*.env.example

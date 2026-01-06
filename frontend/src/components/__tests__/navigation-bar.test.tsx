@@ -79,6 +79,14 @@ describe("NavigationBar", () => {
     expect(loginLink).toHaveAttribute("href", "/login?next=%2Fsearch");
   });
 
+  it("renders a search form that posts to the catalog search page", () => {
+    render(<NavigationBar />);
+
+    const searchForm = screen.getByRole("search");
+    expect(searchForm).toHaveAttribute("action", "/search");
+    expect(screen.getByLabelText("Search catalog")).toBeInTheDocument();
+  });
+
   it("shows the profile menu with avatar and actions when user is signed in", async () => {
     mockedAuthState.user = {
       id: "1",

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from django.contrib.auth import authenticate
+from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
@@ -14,8 +15,13 @@ class UserSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
     role = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
+    pronouns = serializers.SerializerMethodField()
+    bio = serializers.SerializerMethodField()
+    location = serializers.SerializerMethodField()
+    website = serializers.SerializerMethodField()
     preferred_language = serializers.SerializerMethodField()
     preferred_currency = serializers.SerializerMethodField()
+    auth_provider = serializers.SerializerMethodField()
 
     class Meta:
         model = models.User
@@ -24,11 +30,19 @@ class UserSerializer(serializers.ModelSerializer):
             "username",
             "email",
             "is_staff",
+            "is_superuser",
             "display_name",
             "role",
             "avatar_url",
+            "pronouns",
+            "bio",
+            "location",
+            "website",
             "preferred_language",
             "preferred_currency",
+            "share_owned_public",
+            "share_wishlist_public",
+            "auth_provider",
         ]
         read_only_fields = fields
 
@@ -53,6 +67,30 @@ class UserSerializer(serializers.ModelSerializer):
             return None
         return profile.avatar_url or None
 
+    def get_pronouns(self, obj: models.User) -> str | None:
+        profile = getattr(obj, "profile", None)
+        if not profile:
+            return None
+        return profile.pronouns or None
+
+    def get_bio(self, obj: models.User) -> str | None:
+        profile = getattr(obj, "profile", None)
+        if not profile:
+            return None
+        return profile.bio.strip() or None
+
+    def get_location(self, obj: models.User) -> str | None:
+        profile = getattr(obj, "profile", None)
+        if not profile:
+            return None
+        return profile.location.strip() or None
+
+    def get_website(self, obj: models.User) -> str | None:
+        profile = getattr(obj, "profile", None)
+        if not profile:
+            return None
+        return profile.website.strip() or None
+
     def get_preferred_language(self, obj: models.User) -> str | None:
         profile = getattr(obj, "profile", None)
         if not profile or not profile.preferred_languages:
@@ -65,10 +103,73 @@ class UserSerializer(serializers.ModelSerializer):
             return None
         return profile.preferred_currency
 
+    def get_auth_provider(self, obj: models.User) -> str:
+        profile = getattr(obj, "profile", None)
+        if profile and getattr(profile, "auth_provider", "") in {"password", "google", "cognito"}:
+            return profile.auth_provider
+        if not obj.has_usable_password():
+            return "google"
+        return "password"
+
+
+class PublicUserSerializer(serializers.ModelSerializer):
+    display_name = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
+    pronouns = serializers.SerializerMethodField()
+    bio = serializers.SerializerMethodField()
+    location = serializers.SerializerMethodField()
+    website = serializers.SerializerMethodField()
+    share_owned_public = serializers.BooleanField(read_only=True)
+    share_wishlist_public = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = models.User
+        fields = [
+            "username",
+            "display_name",
+            "avatar_url",
+            "pronouns",
+            "bio",
+            "location",
+            "website",
+            "share_owned_public",
+            "share_wishlist_public",
+        ]
+        read_only_fields = fields
+
+    def _profile_value(self, obj: models.User, field: str) -> str | None:
+        profile = getattr(obj, "profile", None)
+        if not profile:
+            return None
+        value = getattr(profile, field, None)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return None
+
+    def get_display_name(self, obj: models.User) -> str:
+        return self._profile_value(obj, "display_name") or obj.username
+
+    def get_avatar_url(self, obj: models.User) -> str | None:
+        return self._profile_value(obj, "avatar_url")
+
+    def get_pronouns(self, obj: models.User) -> str | None:
+        return self._profile_value(obj, "pronouns")
+
+    def get_bio(self, obj: models.User) -> str | None:
+        return self._profile_value(obj, "bio")
+
+    def get_location(self, obj: models.User) -> str | None:
+        return self._profile_value(obj, "location")
+
+    def get_website(self, obj: models.User) -> str | None:
+        return self._profile_value(obj, "website")
+
 
 class UserPreferenceSerializer(serializers.Serializer):
     preferred_language = serializers.CharField(max_length=10, required=False, allow_blank=True)
     preferred_currency = serializers.CharField(max_length=3, required=False, allow_blank=True)
+    share_owned_public = serializers.BooleanField(required=False)
+    share_wishlist_public = serializers.BooleanField(required=False)
 
     def validate_preferred_language(self, value: str) -> str:
         normalized = value.strip().lower()
@@ -80,6 +181,43 @@ class UserPreferenceSerializer(serializers.Serializer):
         normalized = value.strip().upper()
         if normalized and not catalog_models.Currency.objects.filter(code__iexact=normalized).exists():
             raise serializers.ValidationError("Unknown currency code.")
+        return normalized
+
+
+class UserAccountUpdateSerializer(UserPreferenceSerializer):
+    """Updates the authenticated user's account settings.
+
+    - `display_name` is stored on UserProfile (duplicates allowed).
+    - `username` is stored on User (must be unique, enforced in the view).
+    """
+
+    username = serializers.CharField(max_length=150, required=False)
+    display_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    pronouns = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    bio = serializers.CharField(required=False, allow_blank=True)
+    location = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    website = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_website(self, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            return ""
+
+        if not normalized.lower().startswith(("http://", "https://")):
+            normalized = f"https://{normalized}"
+
+        url_field = serializers.URLField()
+        return url_field.run_validation(normalized)
+
+    def validate_username(self, value: str) -> str:
+        normalized = value.strip()
+        if normalized.startswith("@"):  # allow UI-style @username input
+            normalized = normalized[1:].strip()
+
+        if not normalized:
+            raise serializers.ValidationError("Username cannot be blank.")
+
+        UnicodeUsernameValidator()(normalized)
         return normalized
 
 
@@ -144,8 +282,12 @@ class RegisterSerializer(serializers.Serializer):
         profile = models.UserProfile.objects.filter(user=user).first()
         if profile and display_name:
             profile.display_name = display_name
-            profile.save(update_fields=["display_name", "updated_at"])
+            if not profile.auth_provider:
+                profile.auth_provider = "password"
+            profile.save(update_fields=["display_name", "auth_provider", "updated_at"])
         elif profile and not profile.display_name:
             profile.display_name = user.username
-            profile.save(update_fields=["display_name", "updated_at"])
+            if not profile.auth_provider:
+                profile.auth_provider = "password"
+            profile.save(update_fields=["display_name", "auth_provider", "updated_at"])
         return user
