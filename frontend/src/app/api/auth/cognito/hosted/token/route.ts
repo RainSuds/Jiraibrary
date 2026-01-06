@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { getEnv, requireEnvAny } from "@/lib/server/env";
 
+export const runtime = "nodejs";
+
 type TokenExchangePayload = {
   code?: string;
   code_verifier?: string;

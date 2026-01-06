@@ -8,6 +8,8 @@ import crypto from "node:crypto";
 
 import { getEnv, requireEnvAny } from "@/lib/server/env";
 
+export const runtime = "nodejs";
+
 type LoginPayload = {
   identifier?: string;
   username?: string;
