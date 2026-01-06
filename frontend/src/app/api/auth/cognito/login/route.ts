@@ -6,24 +6,13 @@ import {
 } from "@aws-sdk/client-cognito-identity-provider";
 import crypto from "node:crypto";
 
+import { getEnv, requireEnvAny } from "@/lib/server/env";
+
 type LoginPayload = {
   identifier?: string;
   username?: string;
   password?: string;
 };
-
-function getEnv(name: string): string | undefined {
-  const value = process.env[name];
-  return value && value.trim().length > 0 ? value.trim() : undefined;
-}
-
-function requireEnv(name: string): string {
-  const value = getEnv(name);
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
 
 function computeSecretHash(username: string, clientId: string, clientSecret: string): string {
   return crypto
@@ -47,8 +36,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing identifier or password" }, { status: 400 });
     }
 
-    const region = requireEnv("COGNITO_REGION");
-    const clientId = requireEnv("COGNITO_USER_POOL_CLIENT_ID");
+    const region = requireEnvAny(["COGNITO_REGION", "AWS_REGION"], "COGNITO_REGION");
+    const clientId = requireEnvAny(
+      ["COGNITO_USER_POOL_CLIENT_ID", "COGNITO_APP_CLIENT_ID", "COGNITO_CLIENT_ID"],
+      "COGNITO_USER_POOL_CLIENT_ID"
+    );
     const clientSecret = getEnv("COGNITO_USER_POOL_CLIENT_SECRET");
 
     const secretHash = clientSecret ? computeSecretHash(identifier, clientId, clientSecret) : undefined;
