@@ -10,6 +10,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.routers import DefaultRouter
 
 from catalog.views import (  # type: ignore[F401]
+    AdminItemReviewViewSet,
     BrandViewSet,
     CategoryViewSet,
     CollectionViewSet,
@@ -36,6 +37,7 @@ from catalog.views import (  # type: ignore[F401]
     PublicUserReviewListView,
 )
 from users.views import (
+    AdminUserViewSet,
     AvatarUploadView,
     CognitoLoginView,
     CurrentUserView,
@@ -44,6 +46,8 @@ from users.views import (
     LogoutView,
     PublicUserProfileView,
     RegisterView,
+    SiteSettingsView,
+    UserRoleViewSet,
 )
 
 router = DefaultRouter()
@@ -65,6 +69,9 @@ router.register(r"item-favorites", ItemFavoriteViewSet, basename="item-favorite"
 router.register(r"wardrobe", WardrobeEntryViewSet, basename="wardrobe-entry")
 router.register(r"item-submissions", ItemSubmissionViewSet, basename="item-submission")
 router.register(r"submissions/drafts", SubmissionDraftViewSet, basename="submission-draft")
+router.register(r"admin/reviews", AdminItemReviewViewSet, basename="admin-reviews")
+router.register(r"admin/users", AdminUserViewSet, basename="admin-user")
+router.register(r"admin/roles", UserRoleViewSet, basename="admin-role")
 
 
 def health_check(_request):
@@ -88,6 +95,7 @@ urlpatterns = [
     path("api/auth/logout/", LogoutView.as_view(), name="api-logout"),
     path("api/auth/me/", CurrentUserView.as_view(), name="api-current-user"),
     path("api/auth/avatar/", AvatarUploadView.as_view(), name="api-avatar-upload"),
+    path("api/admin/site-settings/", SiteSettingsView.as_view(), name="admin-site-settings"),
     path("api/items/<slug:slug>/reviews/", ItemReviewListCreateView.as_view(), name="item-review-list-create"),
     path("api/reviews/<uuid:pk>/moderate/", ItemReviewModerateView.as_view(), name="item-review-moderate"),
     path("api/reviews/mine/", MyReviewListView.as_view(), name="my-review-list"),

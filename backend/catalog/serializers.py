@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, cast
 
 PLACEHOLDER_IMAGE_URL = "https://placehold.co/600x800?text=Jiraibrary"
 
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 
@@ -1990,6 +1991,19 @@ class ItemSubmissionSerializer(serializers.ModelSerializer):
         return True
 
 
+class AdminItemSubmissionSerializer(ItemSubmissionSerializer):
+    user = serializers.PrimaryKeyRelatedField(queryset=get_user_model().objects.all(), required=False)
+    status = serializers.ChoiceField(choices=models.ItemSubmission.SubmissionStatus.choices, required=False)
+    moderator_notes = serializers.CharField(required=False, allow_blank=True)
+
+    class Meta(ItemSubmissionSerializer.Meta):
+        read_only_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+        ]
+
+
 class ReviewImageSerializer(serializers.ModelSerializer):
     url = serializers.SerializerMethodField()
 
@@ -2039,6 +2053,17 @@ class ItemReviewSerializer(serializers.ModelSerializer):
     def get_author_avatar_url(self, obj: models.ItemReview) -> str | None:
         profile = getattr(obj.author, "profile", None)
         return getattr(profile, "avatar_url", None) or None
+
+
+class AdminItemReviewSerializer(ItemReviewSerializer):
+    moderation_note = serializers.CharField(required=False, allow_blank=True)
+    moderated_at = serializers.DateTimeField(read_only=True)
+
+    class Meta(ItemReviewSerializer.Meta):
+        fields = ItemReviewSerializer.Meta.fields + [
+            "moderated_at",
+            "moderation_note",
+        ]
 
 
 class ItemReviewCreateSerializer(serializers.Serializer):

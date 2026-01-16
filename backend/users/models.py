@@ -74,3 +74,16 @@ class UserProfile(TimeStampedUUIDModel):
 
     def __str__(self) -> str:
         return self.display_name or self.user.username
+
+
+class SiteSettings(TimeStampedUUIDModel):
+    """Singleton-style site settings for operational toggles."""
+
+    maintenance_mode = models.BooleanField(default=False)
+    maintenance_message = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name_plural = "Site settings"
+
+    def __str__(self) -> str:
+        return "Site settings"

@@ -1,80 +1,537 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
+import { API_BASE } from "@/lib/api";
 
-const quickDestinations = [
-  {
-    label: "Profile controls",
-    description: "Adjust sharing rules, roles, or announce maintenance windows.",
-    href: "/profile?panel=account",
-  },
-  {
-    label: "Moderation queue",
-    description: "Speed-run reported items and signal cleanups.",
-    href: "/profile?panel=moderation",
-  },
-  {
-    label: "Closet intelligence",
-    description: "Browse active wardrobes to spot catalog gaps.",
-    href: "/closet",
-  },
-];
+type ResourceConfig = {
+  id: string;
+  label: string;
+  description: string;
+  listPath: string;
+  detailPath: (id: string) => string;
+  idField: string;
+  displayField: string;
+  updateMethod?: "PATCH" | "PUT";
+  adminOnly?: boolean;
+  single?: boolean;
+  defaultPayload: Record<string, unknown>;
+};
 
-const roadmapCalls = [
-  {
-    title: "Weekly curation sync",
-    meta: "Handoff ETA: 2d",
-    detail: "Prioritize which pending submissions deserve fast-track review.",
-  },
-  {
-    title: "Merchant partnerships",
-    meta: "Needs owner",
-    detail: "Surface which brands are missing lookbooks before the next pitch.",
-  },
-  {
-    title: "Data hygiene",
-    meta: "45% ready",
-    detail: "Tidy mis-labeled categories and archive duplicates before metrics go live.",
-  },
-];
+const buildUrl = (path: string) => {
+  const trimmed = path.replace(/^\/+/, "");
+  const base = API_BASE.endsWith("/") ? API_BASE : `${API_BASE}/`;
+  return new URL(trimmed, base).toString();
+};
 
-const checklist = [
+const resourceGroups: { title: string; resources: ResourceConfig[] }[] = [
   {
-    label: "Catalog health",
-    status: "On track",
-    percent: 68,
-    tone: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    title: "People",
+    resources: [
+      {
+        id: "users",
+        label: "Users",
+        description: "Edit profiles, roles, and access flags.",
+        listPath: "api/admin/users/",
+        detailPath: (id) => `api/admin/users/${encodeURIComponent(id)}/`,
+        idField: "id",
+        displayField: "username",
+        adminOnly: true,
+        defaultPayload: {
+          username: "",
+          email: "",
+          first_name: "",
+          last_name: "",
+          is_active: true,
+          is_staff: false,
+          is_superuser: false,
+          role_id: null,
+          display_name: "",
+          bio: "",
+          avatar_url: "",
+          pronouns: "",
+          location: "",
+          website: "",
+        },
+      },
+      {
+        id: "roles",
+        label: "Roles",
+        description: "Create and tune role scopes.",
+        listPath: "api/admin/roles/",
+        detailPath: (id) => `api/admin/roles/${encodeURIComponent(id)}/`,
+        idField: "id",
+        displayField: "name",
+        adminOnly: true,
+        defaultPayload: {
+          name: "",
+          description: "",
+          scopes: [],
+        },
+      },
+    ],
   },
   {
-    label: "Community safety",
-    status: "Needs follow-up",
-    percent: 42,
-    tone: "border-amber-200 bg-amber-50 text-amber-700",
+    title: "Catalog",
+    resources: [
+      {
+        id: "items",
+        label: "Items",
+        description: "Full CRUD for catalog items.",
+        listPath: "api/items/",
+        detailPath: (id) => `api/items/${encodeURIComponent(id)}/`,
+        idField: "slug",
+        displayField: "slug",
+        updateMethod: "PUT",
+        adminOnly: true,
+        defaultPayload: {
+          slug: "",
+          brand_slug: "",
+          category_slug: "",
+          subcategory_slug: "",
+          release_year: null,
+          status: "published",
+          tags: [],
+          translations: [],
+          variants: [],
+        },
+      },
+      {
+        id: "brands",
+        label: "Brands",
+        description: "Manage brand metadata and translations.",
+        listPath: "api/brands/",
+        detailPath: (id) => `api/brands/${encodeURIComponent(id)}/`,
+        idField: "slug",
+        displayField: "slug",
+        adminOnly: true,
+        defaultPayload: {
+          slug: "",
+          names: { en: "" },
+          descriptions: {},
+          country: "",
+          founded_year: null,
+          icon_url: "",
+          official_site_url: "",
+          status: "active",
+        },
+      },
+      {
+        id: "collections",
+        label: "Collections",
+        description: "Seasons and drops attached to brands.",
+        listPath: "api/collections/",
+        detailPath: (id) => `api/collections/${encodeURIComponent(id)}/`,
+        idField: "id",
+        displayField: "name",
+        adminOnly: true,
+        defaultPayload: {
+          name: "",
+          season: "",
+          year: null,
+          description: "",
+          brand_id: null,
+        },
+      },
+      {
+        id: "categories",
+        label: "Categories",
+        description: "Top-level catalog categories.",
+        listPath: "api/categories/",
+        detailPath: (id) => `api/categories/${encodeURIComponent(id)}/`,
+        idField: "slug",
+        displayField: "name",
+        adminOnly: true,
+        defaultPayload: {
+          name: "",
+          slug: "",
+          description: "",
+        },
+      },
+      {
+        id: "subcategories",
+        label: "Subcategories",
+        description: "Subcategory taxonomy nodes.",
+        listPath: "api/subcategories/",
+        detailPath: (id) => `api/subcategories/${encodeURIComponent(id)}/`,
+        idField: "slug",
+        displayField: "name",
+        adminOnly: true,
+        defaultPayload: {
+          name: "",
+          slug: "",
+          description: "",
+          category_id: null,
+        },
+      },
+      {
+        id: "styles",
+        label: "Styles",
+        description: "Primary styles and tags.",
+        listPath: "api/styles/",
+        detailPath: (id) => `api/styles/${encodeURIComponent(id)}/`,
+        idField: "slug",
+        displayField: "name",
+        adminOnly: true,
+        defaultPayload: {
+          name: "",
+          slug: "",
+          description: "",
+        },
+      },
+      {
+        id: "substyles",
+        label: "Substyles",
+        description: "Secondary style tags.",
+        listPath: "api/substyles/",
+        detailPath: (id) => `api/substyles/${encodeURIComponent(id)}/`,
+        idField: "slug",
+        displayField: "name",
+        adminOnly: true,
+        defaultPayload: {
+          name: "",
+          slug: "",
+          description: "",
+          style_id: null,
+        },
+      },
+      {
+        id: "tags",
+        label: "Tags",
+        description: "Item tags used in filters.",
+        listPath: "api/tags/",
+        detailPath: (id) => `api/tags/${encodeURIComponent(id)}/`,
+        idField: "slug",
+        displayField: "name",
+        adminOnly: true,
+        defaultPayload: {
+          name: "",
+          slug: "",
+          type: "general",
+          is_featured: false,
+        },
+      },
+      {
+        id: "colors",
+        label: "Colors",
+        description: "Color swatches and palette mapping.",
+        listPath: "api/colors/",
+        detailPath: (id) => `api/colors/${encodeURIComponent(id)}/`,
+        idField: "id",
+        displayField: "name",
+        adminOnly: true,
+        defaultPayload: {
+          name: "",
+          hex_code: "",
+          lch_values: {},
+        },
+      },
+      {
+        id: "fabrics",
+        label: "Fabrics",
+        description: "Fabric and material dictionary.",
+        listPath: "api/fabrics/",
+        detailPath: (id) => `api/fabrics/${encodeURIComponent(id)}/`,
+        idField: "id",
+        displayField: "name",
+        adminOnly: true,
+        defaultPayload: {
+          name: "",
+          description: "",
+        },
+      },
+      {
+        id: "features",
+        label: "Features",
+        description: "Construction features and signals.",
+        listPath: "api/features/",
+        detailPath: (id) => `api/features/${encodeURIComponent(id)}/`,
+        idField: "id",
+        displayField: "name",
+        adminOnly: true,
+        defaultPayload: {
+          name: "",
+          description: "",
+          synonyms: [],
+          category: "",
+          is_visible: true,
+        },
+      },
+      {
+        id: "languages",
+        label: "Languages",
+        description: "Localized name support.",
+        listPath: "api/languages/",
+        detailPath: (id) => `api/languages/${encodeURIComponent(id)}/`,
+        idField: "code",
+        displayField: "code",
+        adminOnly: true,
+        defaultPayload: {
+          code: "",
+          name: "",
+          native_name: "",
+          is_supported: true,
+        },
+      },
+      {
+        id: "currencies",
+        label: "Currencies",
+        description: "Currency catalog and activation.",
+        listPath: "api/currencies/",
+        detailPath: (id) => `api/currencies/${encodeURIComponent(id)}/`,
+        idField: "code",
+        displayField: "code",
+        adminOnly: true,
+        defaultPayload: {
+          code: "",
+          name: "",
+          symbol: "",
+          is_active: true,
+        },
+      },
+    ],
   },
   {
-    label: "Roadmap clarity",
-    status: "Blocked",
-    percent: 25,
-    tone: "border-rose-200 bg-rose-50 text-rose-700",
+    title: "Moderation",
+    resources: [
+      {
+        id: "submissions",
+        label: "Submissions",
+        description: "Review and triage incoming submissions.",
+        listPath: "api/item-submissions/",
+        detailPath: (id) => `api/item-submissions/${encodeURIComponent(id)}/`,
+        idField: "id",
+        displayField: "title",
+        defaultPayload: {
+          title: "",
+          brand_name: "",
+          status: "pending",
+          moderator_notes: "",
+          linked_item: null,
+        },
+      },
+      {
+        id: "reviews",
+        label: "Reviews",
+        description: "Moderate and edit reviews.",
+        listPath: "api/admin/reviews/",
+        detailPath: (id) => `api/admin/reviews/${encodeURIComponent(id)}/`,
+        idField: "id",
+        displayField: "item_slug",
+        defaultPayload: {
+          item: null,
+          recommendation: "recommend",
+          body: "",
+          status: "pending",
+          moderation_note: "",
+        },
+      },
+    ],
+  },
+  {
+    title: "Site",
+    resources: [
+      {
+        id: "site-settings",
+        label: "Site settings",
+        description: "Maintenance mode and global toggles.",
+        listPath: "api/admin/site-settings/",
+        detailPath: (_id) => "api/admin/site-settings/",
+        idField: "id",
+        displayField: "id",
+        adminOnly: true,
+        single: true,
+        defaultPayload: {
+          maintenance_mode: false,
+          maintenance_message: "",
+        },
+      },
+    ],
   },
 ];
 
 export default function AdminHubPage() {
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user, token, loading } = useAuth();
 
   const roleName = useMemo(() => user?.role?.name?.toLowerCase() ?? "user", [user]);
   const isAdmin = Boolean(user?.is_superuser || roleName === "admin");
+  const isModerator = Boolean(user?.is_staff || roleName === "moderator" || isAdmin);
+
+  const availableResources = useMemo(() => {
+    return resourceGroups.map((group) => ({
+      ...group,
+      resources: group.resources.filter((resource) => !resource.adminOnly || isAdmin),
+    })).filter((group) => group.resources.length > 0);
+  }, [isAdmin]);
+
+  const initialResourceId = availableResources[0]?.resources[0]?.id ?? "";
+  const [activeResourceId, setActiveResourceId] = useState(initialResourceId);
+  const [items, setItems] = useState<Record<string, unknown>[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editorValue, setEditorValue] = useState<string>("");
+  const [loadingResource, setLoadingResource] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const resource = useMemo(() => {
+    for (const group of availableResources) {
+      const found = group.resources.find((entry) => entry.id === activeResourceId);
+      if (found) return found;
+    }
+    return availableResources[0]?.resources[0];
+  }, [activeResourceId, availableResources]);
 
   useEffect(() => {
-    if (!loading && user && !isAdmin) {
+    if (!loading && user && !isModerator) {
       router.replace("/403");
     }
-  }, [loading, user, isAdmin, router]);
+  }, [loading, user, isModerator, router]);
+
+  useEffect(() => {
+    if (!resource && availableResources[0]?.resources[0]?.id) {
+      setActiveResourceId(availableResources[0].resources[0].id);
+    }
+  }, [availableResources, resource]);
+
+  const fetchJson = useCallback(
+    async (path: string, init?: RequestInit) => {
+      if (!token) {
+        throw new Error("Missing auth token.");
+      }
+      const response = await fetch(buildUrl(path), {
+        ...init,
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Authorization: `Token ${token}`,
+          ...(init?.headers ?? {}),
+        },
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `Request failed with status ${response.status}`);
+      }
+      if (response.status === 204) {
+        return null as unknown;
+      }
+      return (await response.json()) as unknown;
+    },
+    [token],
+  );
+
+  const loadResource = useCallback(async () => {
+    if (!resource) return;
+    setLoadingResource(true);
+    setError(null);
+    setNotice(null);
+    try {
+      if (resource.single) {
+        const data = (await fetchJson(resource.listPath)) as Record<string, unknown>;
+        setItems(data ? [data] : []);
+        const idValue = data?.[resource.idField] ? String(data[resource.idField]) : "singleton";
+        setSelectedId(idValue);
+        setEditorValue(JSON.stringify(data ?? resource.defaultPayload, null, 2));
+      } else {
+        const data = await fetchJson(resource.listPath);
+        const list = Array.isArray(data) ? data : Array.isArray((data as { results?: unknown[] }).results) ? (data as { results: unknown[] }).results : [];
+        setItems(list as Record<string, unknown>[]);
+        const first = list[0] as Record<string, unknown> | undefined;
+        if (first && first[resource.idField]) {
+          const idValue = String(first[resource.idField]);
+          setSelectedId(idValue);
+          const detail = (await fetchJson(resource.detailPath(idValue))) as Record<string, unknown>;
+          setEditorValue(JSON.stringify(detail, null, 2));
+        } else {
+          setSelectedId(null);
+          setEditorValue(JSON.stringify(resource.defaultPayload, null, 2));
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load data.");
+    } finally {
+      setLoadingResource(false);
+    }
+  }, [fetchJson, resource]);
+
+  useEffect(() => {
+    if (!resource || !token) return;
+    void loadResource();
+  }, [loadResource, resource, token]);
+
+  const handleSelect = useCallback(
+    async (idValue: string) => {
+      if (!resource) return;
+      setSelectedId(idValue);
+      setLoadingResource(true);
+      setError(null);
+      try {
+        const detail = (await fetchJson(resource.detailPath(idValue))) as Record<string, unknown>;
+        setEditorValue(JSON.stringify(detail, null, 2));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to load record.");
+      } finally {
+        setLoadingResource(false);
+      }
+    },
+    [fetchJson, resource],
+  );
+
+  const handleCreateNew = useCallback(() => {
+    if (!resource) return;
+    setSelectedId(null);
+    setEditorValue(JSON.stringify(resource.defaultPayload, null, 2));
+  }, [resource]);
+
+  const handleSave = useCallback(async () => {
+    if (!resource) return;
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const parsed = JSON.parse(editorValue || "{}");
+      if (selectedId && !resource.single) {
+        const method = resource.updateMethod ?? "PATCH";
+        await fetchJson(resource.detailPath(selectedId), {
+          method,
+          body: JSON.stringify(parsed),
+        });
+        setNotice("Saved changes.");
+      } else {
+        const targetPath = resource.single ? resource.listPath : resource.listPath;
+        const method = resource.single ? "PATCH" : "POST";
+        await fetchJson(targetPath, {
+          method,
+          body: JSON.stringify(parsed),
+        });
+        setNotice(resource.single ? "Settings updated." : "Created new record.");
+      }
+      await loadResource();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save record.");
+    } finally {
+      setSaving(false);
+    }
+  }, [editorValue, fetchJson, loadResource, resource, selectedId]);
+
+  const handleDelete = useCallback(async () => {
+    if (!resource || !selectedId || resource.single) return;
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await fetchJson(resource.detailPath(selectedId), { method: "DELETE" });
+      setNotice("Record deleted.");
+      await loadResource();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to delete record.");
+    } finally {
+      setSaving(false);
+    }
+  }, [fetchJson, loadResource, resource, selectedId]);
 
   if (loading) {
     return (
@@ -97,7 +554,7 @@ export default function AdminHubPage() {
     );
   }
 
-  if (!isAdmin) {
+  if (!isModerator) {
     return (
       <div className="mx-auto w-full max-w-3xl rounded-3xl border border-rose-100 bg-white/90 p-8 text-center shadow-lg">
         <p className="text-sm font-medium text-rose-600">Checking admin access…</p>
@@ -106,119 +563,131 @@ export default function AdminHubPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-8">
-      <section className="rounded-3xl border border-rose-100 bg-white/95 p-8 shadow-lg">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 lg:flex-row">
+      <aside className="w-full rounded-3xl border border-rose-100 bg-white/90 p-6 shadow-lg lg:w-72">
+        <div className="space-y-6">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-rose-400">Admin lab</p>
-            <h1 className="mt-2 text-4xl font-semibold tracking-tight text-rose-900">Guide the catalog.</h1>
-            <p className="mt-3 max-w-2xl text-sm text-rose-500">
-              Keep curation smooth, unblock moderators, and broadcast product direction. Nothing here pings the Django admin directly—use it to plan, not to deploy.
-            </p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-rose-400">Admin console</p>
+            <h1 className="mt-2 text-2xl font-semibold text-rose-900">Jiraibrary control</h1>
+            <p className="mt-2 text-xs text-rose-500">Signed in as {user.display_name || user.username}</p>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href="/profile?panel=moderation"
-              className="rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:text-rose-900"
-            >
-              Open queues
-            </Link>
-            <Link
-              href="/profile?panel=submissions"
-              className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
-            >
-              Review submissions
-            </Link>
-          </div>
-        </div>
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
-          {checklist.map((item) => (
-            <div key={item.label} className="rounded-2xl border border-rose-100 bg-rose-50/60 p-4">
-              <p className="text-xs uppercase tracking-wide text-rose-400">{item.label}</p>
-              <div className="mt-2 flex items-center justify-between text-sm text-rose-900">
-                <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${item.tone}`}>{item.status}</span>
-                <span>{item.percent}%</span>
-              </div>
-              <div className="mt-3 h-2 rounded-full bg-rose-100">
-                <span
-                  className="block h-full rounded-full bg-gradient-to-r from-rose-400 to-rose-600"
-                  style={{ width: `${item.percent}%` }}
-                />
+          {availableResources.map((group) => (
+            <div key={group.title}>
+              <p className="text-xs font-semibold uppercase tracking-wide text-rose-300">{group.title}</p>
+              <div className="mt-3 flex flex-col gap-2">
+                {group.resources.map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => setActiveResourceId(entry.id)}
+                    className={`rounded-2xl border px-4 py-3 text-left text-sm transition ${
+                      entry.id === resource?.id
+                        ? "border-rose-300 bg-rose-50 text-rose-900"
+                        : "border-transparent text-rose-500 hover:border-rose-100 hover:bg-rose-50"
+                    }`}
+                  >
+                    <span className="font-semibold">{entry.label}</span>
+                    <span className="mt-1 block text-xs text-rose-400">{entry.description}</span>
+                  </button>
+                ))}
               </div>
             </div>
           ))}
         </div>
-      </section>
-
-      <section className="rounded-3xl border border-rose-100 bg-white/95 p-8 shadow-lg">
-        <div className="flex flex-wrap items-center gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-rose-400">Shortcuts</p>
-            <p className="text-sm text-rose-500">Hop to the control surfaces you need most often.</p>
-          </div>
-          <span className="ml-auto rounded-full border border-rose-100 px-3 py-1 text-xs text-rose-400">Signed in as {user.display_name || user.username}</span>
-        </div>
-        <div className="mt-5 grid gap-4 md:grid-cols-3">
-          {quickDestinations.map((destination) => (
-            <Link
-              key={destination.label}
-              href={destination.href}
-              className="flex h-full flex-col rounded-2xl border border-rose-100 bg-rose-50/60 p-4 transition hover:-translate-y-1 hover:border-rose-200 hover:bg-white"
-            >
-              <p className="text-sm font-semibold text-rose-900">{destination.label}</p>
-              <p className="mt-2 flex-1 text-xs text-rose-500">{destination.description}</p>
-              <span className="mt-4 text-xs font-semibold text-rose-400">Open</span>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section className="rounded-3xl border border-rose-100 bg-white/95 p-8 shadow-lg">
-        <div className="flex flex-wrap items-center gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-rose-400">Roadmap calls</p>
-            <p className="text-sm text-rose-500">Context for the next leadership sync.</p>
-          </div>
-          <Link href="/profile?panel=activity" className="ml-auto rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-700">
-            View activity feed
-          </Link>
-        </div>
-        <div className="mt-5 grid gap-4 md:grid-cols-3">
-          {roadmapCalls.map((callout) => (
-            <div key={callout.title} className="rounded-2xl border border-rose-100 bg-white p-4 shadow-inner">
-              <p className="text-sm font-semibold text-rose-900">{callout.title}</p>
-              <p className="text-xs uppercase tracking-wide text-rose-400">{callout.meta}</p>
-              <p className="mt-3 text-sm text-rose-500">{callout.detail}</p>
+      </aside>
+      <main className="flex-1 space-y-6">
+        <section className="rounded-3xl border border-rose-100 bg-white/95 p-6 shadow-lg">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-rose-400">{resource?.label ?? "Admin"}</p>
+              <p className="text-sm text-rose-500">{resource?.description}</p>
             </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="rounded-3xl border border-rose-100 bg-white/95 p-8 shadow-lg">
-        <div className="flex flex-wrap items-center gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-rose-400">Operational checklist</p>
-            <p className="text-sm text-rose-500">Flag key actions before shipping the next drop.</p>
-          </div>
-          <Link href="/profile?panel=submissions" className="ml-auto rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-700">
-            Assign owners
-          </Link>
-        </div>
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
-          {["Backlog grooming", "Escalation log", "Creator outreach", "Release notes"].map((item) => (
-            <div key={item} className="rounded-2xl border border-rose-100 bg-rose-50/60 p-4">
-              <div className="flex items-center justify-between text-sm font-semibold text-rose-900">
-                <span>{item}</span>
-                <span className="text-xs text-rose-400">Drafting</span>
-              </div>
-              <p className="mt-2 text-xs text-rose-500">Capture decisions here so the rest of the team is never blocked.</p>
-              <button className="mt-3 rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:text-rose-900">
-                Mark as noted
+            <div className="flex flex-wrap gap-3">
+              {!resource?.single ? (
+                <button
+                  type="button"
+                  onClick={handleCreateNew}
+                  className="rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold text-rose-700"
+                >
+                  New record
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+              >
+                {saving ? "Saving…" : "Save"}
               </button>
+              {selectedId && !resource?.single ? (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={saving}
+                  className="rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold text-rose-600 disabled:opacity-60"
+                >
+                  Delete
+                </button>
+              ) : null}
             </div>
-          ))}
-        </div>
-      </section>
+          </div>
+          {error ? (
+            <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-600">{error}</p>
+          ) : null}
+          {notice ? (
+            <p className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-600">{notice}</p>
+          ) : null}
+        </section>
+
+        <section className="grid gap-6 lg:grid-cols-[1.1fr_1.9fr]">
+          <div className="rounded-3xl border border-rose-100 bg-white/95 p-6 shadow-lg">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-rose-900">Records</p>
+              <span className="text-xs text-rose-400">{loadingResource ? "Loading…" : `${items.length} found`}</span>
+            </div>
+            <div className="mt-4 max-h-[460px] space-y-2 overflow-auto">
+              {items.map((item) => {
+                const idValue = item[resource?.idField ?? "id"] ? String(item[resource?.idField ?? "id"]) : "";
+                const display = item[resource?.displayField ?? "id"] ? String(item[resource?.displayField ?? "id"]) : idValue;
+                return (
+                  <button
+                    key={idValue}
+                    type="button"
+                    onClick={() => idValue && handleSelect(idValue)}
+                    className={`w-full rounded-2xl border px-4 py-3 text-left text-sm transition ${
+                      idValue === selectedId
+                        ? "border-rose-300 bg-rose-50 text-rose-900"
+                        : "border-transparent text-rose-600 hover:border-rose-100 hover:bg-rose-50"
+                    }`}
+                  >
+                    <span className="font-semibold">{display}</span>
+                    <span className="mt-1 block text-xs text-rose-400">{idValue}</span>
+                  </button>
+                );
+              })}
+              {!items.length ? (
+                <p className="text-xs text-rose-400">No records found for this resource.</p>
+              ) : null}
+            </div>
+          </div>
+          <div className="rounded-3xl border border-rose-100 bg-white/95 p-6 shadow-lg">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-rose-900">Editor</p>
+              <span className="text-xs text-rose-400">JSON payload</span>
+            </div>
+            <p className="mt-2 text-xs text-rose-500">
+              Edit the raw JSON payload to update every field. For new records, use the template below and hit Save.
+            </p>
+            <textarea
+              value={editorValue}
+              onChange={(event) => setEditorValue(event.target.value)}
+              className="mt-4 h-[460px] w-full rounded-2xl border border-rose-100 bg-rose-50/50 px-4 py-3 text-xs text-rose-900 outline-none focus:border-rose-300"
+              spellCheck={false}
+            />
+          </div>
+        </section>
+      </main>
     </div>
   );
 }

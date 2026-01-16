@@ -11,6 +11,12 @@ from catalog import models as catalog_models
 from . import models
 
 
+class UserRoleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.UserRole
+        fields = ["id", "name", "description", "scopes", "created_at", "updated_at"]
+
+
 class UserSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
     role = serializers.SerializerMethodField()
@@ -110,6 +116,63 @@ class UserSerializer(serializers.ModelSerializer):
         if not obj.has_usable_password():
             return "google"
         return "password"
+
+
+class AdminUserSerializer(serializers.ModelSerializer):
+    role = UserRoleSerializer(read_only=True)
+    role_id = serializers.PrimaryKeyRelatedField(
+        source="role",
+        queryset=models.UserRole.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+    display_name = serializers.CharField(source="profile.display_name", required=False, allow_blank=True)
+    bio = serializers.CharField(source="profile.bio", required=False, allow_blank=True)
+    avatar_url = serializers.URLField(source="profile.avatar_url", required=False, allow_blank=True)
+    pronouns = serializers.CharField(source="profile.pronouns", required=False, allow_blank=True)
+    location = serializers.CharField(source="profile.location", required=False, allow_blank=True)
+    website = serializers.CharField(source="profile.website", required=False, allow_blank=True)
+
+    class Meta:
+        model = models.User
+        fields = [
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "is_active",
+            "is_staff",
+            "is_superuser",
+            "role",
+            "role_id",
+            "display_name",
+            "bio",
+            "avatar_url",
+            "pronouns",
+            "location",
+            "website",
+            "date_joined",
+        ]
+
+    def update(self, instance: models.User, validated_data: dict) -> models.User:  # type: ignore[override]
+        profile_data = validated_data.pop("profile", {})
+        for key, value in validated_data.items():
+            setattr(instance, key, value)
+        instance.save()
+
+        if profile_data:
+            profile, _ = models.UserProfile.objects.get_or_create(user=instance)
+            for key, value in profile_data.items():
+                setattr(profile, key, value)
+            profile.save()
+        return instance
+
+
+class SiteSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.SiteSettings
+        fields = ["id", "maintenance_mode", "maintenance_message", "created_at", "updated_at"]
 
 
 class PublicUserSerializer(serializers.ModelSerializer):

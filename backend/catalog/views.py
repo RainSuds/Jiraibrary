@@ -30,7 +30,18 @@ def _is_uuid_value(value: Any) -> bool:
     return True
 
 
-class BrandViewSet(viewsets.ReadOnlyModelViewSet):
+class CatalogReadWriteViewSet(viewsets.ModelViewSet):
+    """Allow public read access and staff-only writes."""
+
+    permission_classes = [permissions.IsAuthenticated, IsCatalogEditor]
+
+    def get_permissions(self):  # type: ignore[override]
+        if self.action in {"list", "retrieve"}:
+            return [permissions.AllowAny()]
+        return super().get_permissions()
+
+
+class BrandViewSet(CatalogReadWriteViewSet):
     queryset = (
         models.Brand.objects.annotate(
             item_count=Count(
@@ -60,7 +71,7 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         return serializers.BrandSerializer
 
 
-class CollectionViewSet(viewsets.ReadOnlyModelViewSet):
+class CollectionViewSet(CatalogReadWriteViewSet):
     queryset = (
         models.Collection.objects.select_related("brand")
         .all()
@@ -72,33 +83,33 @@ class CollectionViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = ["name", "brand__slug"]
 
 
-class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
+class CategoryViewSet(CatalogReadWriteViewSet):
     queryset = models.Category.objects.all().order_by("name")
     serializer_class = serializers.CategorySerializer
     lookup_field = "slug"
 
 
-class StyleViewSet(viewsets.ReadOnlyModelViewSet):
+class StyleViewSet(CatalogReadWriteViewSet):
     queryset = models.Style.objects.all().order_by("name")
     serializer_class = serializers.StyleSerializer
     lookup_field = "slug"
 
 
-class SubcategoryViewSet(viewsets.ReadOnlyModelViewSet):
+class SubcategoryViewSet(CatalogReadWriteViewSet):
     queryset = models.Subcategory.objects.select_related("category").all()
     serializer_class = serializers.SubcategorySerializer
     filterset_fields = ["category__slug"]
     lookup_field = "slug"
 
 
-class SubstyleViewSet(viewsets.ReadOnlyModelViewSet):
+class SubstyleViewSet(CatalogReadWriteViewSet):
     queryset = models.Substyle.objects.select_related("style").all()
     serializer_class = serializers.SubstyleSerializer
     filterset_fields = ["style__slug"]
     lookup_field = "slug"
 
 
-class TagViewSet(viewsets.ReadOnlyModelViewSet):
+class TagViewSet(CatalogReadWriteViewSet):
     queryset = models.Tag.objects.all().order_by("name")
     serializer_class = serializers.TagSerializer
     lookup_field = "slug"
@@ -106,17 +117,17 @@ class TagViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = ["name", "slug"]
 
 
-class ColorViewSet(viewsets.ReadOnlyModelViewSet):
+class ColorViewSet(CatalogReadWriteViewSet):
     queryset = models.Color.objects.all().order_by("name")
     serializer_class = serializers.ColorSerializer
 
 
-class FabricViewSet(viewsets.ReadOnlyModelViewSet):
+class FabricViewSet(CatalogReadWriteViewSet):
     queryset = models.Fabric.objects.all().order_by("name")
     serializer_class = serializers.FabricSerializer
 
 
-class FeatureViewSet(viewsets.ReadOnlyModelViewSet):
+class FeatureViewSet(CatalogReadWriteViewSet):
     queryset = models.Feature.objects.all().order_by("name")
     serializer_class = serializers.FeatureSerializer
     filterset_fields = ["category", "is_visible"]
@@ -169,13 +180,13 @@ class ImageViewSet(viewsets.ModelViewSet):
         serializer.save()
 
 
-class LanguageViewSet(viewsets.ReadOnlyModelViewSet):
+class LanguageViewSet(CatalogReadWriteViewSet):
     queryset = models.Language.objects.all().order_by("code")
     serializer_class = serializers.LanguageSerializer
     lookup_field = "code"
 
 
-class CurrencyViewSet(viewsets.ReadOnlyModelViewSet):
+class CurrencyViewSet(CatalogReadWriteViewSet):
     queryset = models.Currency.objects.all().order_by("code")
     serializer_class = serializers.CurrencySerializer
     lookup_field = "code"
@@ -1085,11 +1096,17 @@ class ItemSubmissionViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
     serializer_class = serializers.ItemSubmissionSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = None
+
+    def get_permissions(self):  # type: ignore[override]
+        if self.action in {"update", "partial_update", "destroy"}:
+            return [permissions.IsAuthenticated(), IsCatalogEditor()]
+        return super().get_permissions()
 
     def get_queryset(self):  # type: ignore[override]
         request = cast(Request, self.request)
@@ -1101,8 +1118,18 @@ class ItemSubmissionViewSet(
             queryset = queryset.filter(user=request.user)
         return queryset
 
+    def get_serializer_class(self):  # type: ignore[override]
+        request = cast(Request, self.request)
+        if request.user.is_staff:
+            return serializers.AdminItemSubmissionSerializer
+        return serializers.ItemSubmissionSerializer
+
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        request = cast(Request, self.request)
+        if request.user.is_staff and "user" in serializer.validated_data:
+            serializer.save()
+            return
+        serializer.save(user=request.user)
 
     def update(self, request, *args, **kwargs):  # type: ignore[override]
         if not request.user.is_staff:
@@ -1231,6 +1258,27 @@ class ItemReviewListCreateView(generics.ListCreateAPIView):
             except (TypeError, ValueError):
                 pass
         return queryset
+
+
+class AdminItemReviewViewSet(viewsets.ModelViewSet):
+    queryset = models.ItemReview.objects.select_related("author", "item").prefetch_related("images").all()
+    serializer_class = serializers.AdminItemReviewSerializer
+    permission_classes = [permissions.IsAuthenticated, IsCatalogEditor]
+    http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        serializer.save(author=self.request.user)
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        previous = self.get_object()
+        updated = serializer.save()
+        if updated.status != previous.status and updated.status in {
+            models.ItemReview.ModerationStatus.APPROVED,
+            models.ItemReview.ModerationStatus.REJECTED,
+        }:
+            updated.moderated_by = self.request.user
+            updated.moderated_at = timezone.now()
+            updated.save(update_fields=["moderated_by", "moderated_at"])
 
     def get_serializer_class(self):  # type: ignore[override]
         if self.request.method.upper() == "POST":

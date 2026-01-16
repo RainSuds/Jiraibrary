@@ -239,6 +239,15 @@ function ProfilePageContent() {
     }
   }, [availableTabs, fallbackTabId, panelParam, selectTab]);
 
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+    if (panelParam === "admin" && isAdmin) {
+      router.replace("/admin");
+    }
+  }, [isAdmin, loading, panelParam, router]);
+
   if (loading) {
     return (
       <div className="mx-auto w-full max-w-2xl rounded-3xl border border-rose-100 bg-white/90 p-8 shadow-lg">

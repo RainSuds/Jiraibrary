@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from functools import lru_cache
+import json
 import logging
 from typing import Any, cast
 import uuid
@@ -16,20 +17,24 @@ from django.utils.text import slugify
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 import jwt
-from rest_framework import permissions, status
+from rest_framework import permissions, status, viewsets
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import User, UserProfile
+from .models import SiteSettings, User, UserProfile, UserRole
+from .permissions import IsAdminRole
 from .serializers import (
+    AdminUserSerializer,
     LoginSerializer,
     PublicUserSerializer,
     RegisterSerializer,
+    SiteSettingsSerializer,
     UserAccountUpdateSerializer,
     UserPreferenceSerializer,
     UserSerializer,
+    UserRoleSerializer,
 )
 
 
@@ -78,6 +83,31 @@ def _cognito_claims_are_federated(claims: dict[str, Any]) -> bool:
     if isinstance(identities, str) and identities.strip():
         return True
     return False
+
+
+def _normalize_cognito_groups(claims: dict[str, Any]) -> list[str]:
+    raw_groups = claims.get("cognito:groups") or claims.get("groups")
+    if not raw_groups:
+        return []
+
+    if isinstance(raw_groups, (list, tuple)):
+        groups = list(raw_groups)
+    elif isinstance(raw_groups, str):
+        cleaned = raw_groups.strip()
+        if not cleaned:
+            return []
+        if cleaned.startswith("["):
+            try:
+                parsed = json.loads(cleaned)
+            except json.JSONDecodeError:
+                parsed = []
+            groups = parsed if isinstance(parsed, list) else []
+        else:
+            groups = [entry.strip() for entry in cleaned.split(",") if entry.strip()]
+    else:
+        return []
+
+    return [str(entry).strip().lower() for entry in groups if str(entry).strip()]
 
 
 def _generate_username(email: str, subject: str) -> str:
@@ -142,7 +172,10 @@ def _verify_cognito_id_token(id_token: str) -> dict[str, Any]:
     region = getattr(settings, "COGNITO_REGION", "")
     user_pool_id = getattr(settings, "COGNITO_USER_POOL_ID", "")
     client_id = getattr(settings, "COGNITO_APP_CLIENT_ID", "")
-    if not region or not user_pool_id or not client_id:
+    client_ids = cast(list[str], getattr(settings, "COGNITO_APP_CLIENT_IDS", []) or [])
+    if not client_ids and client_id:
+        client_ids = [client_id]
+    if not region or not user_pool_id or not client_ids:
         raise ValueError("Cognito settings are not configured.")
 
     issuer = f"https://cognito-idp.{region}.amazonaws.com/{user_pool_id}"
@@ -151,11 +184,12 @@ def _verify_cognito_id_token(id_token: str) -> dict[str, Any]:
     jwk_client = _get_pyjwt_jwk_client(jwks_url)
     signing_key = jwk_client.get_signing_key_from_jwt(id_token)
 
+    audience: str | list[str] = client_ids[0] if len(client_ids) == 1 else client_ids
     decoded = jwt.decode(
         id_token,
         signing_key.key,
         algorithms=["RS256"],
-        audience=client_id,
+        audience=audience,
         issuer=issuer,
         leeway=120,
     )
@@ -210,7 +244,7 @@ class CurrentUserView(APIView):
         serializer = UserAccountUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         profile, _ = UserProfile.objects.get_or_create(user=request.user)
-        validated = serializer.validated_data
+        validated = cast(dict[str, Any], serializer.validated_data)
         update_fields: list[str] = []
         user_update_fields: list[str] = []
 
@@ -430,7 +464,7 @@ class CognitoLoginView(APIView):
             claims = _verify_cognito_id_token(id_token)
         except Exception as exc:
             logger.warning("Failed to verify Cognito ID token: %s", exc)
-            if getattr(settings, "DEBUG", False):
+            if getattr(settings, "DEBUG", False) or getattr(settings, "COGNITO_DEBUG_ERRORS", False):
                 return Response(
                     {"detail": "Invalid Cognito ID token.", "reason": str(exc)},
                     status=status.HTTP_400_BAD_REQUEST,
@@ -446,6 +480,9 @@ class CognitoLoginView(APIView):
             return Response({"detail": "Cognito account email is not verified."}, status=status.HTTP_400_BAD_REQUEST)
 
         subject = claims.get("sub", "")
+        cognito_groups = _normalize_cognito_groups(claims)
+        is_admin_group = any(group in {"admin", "admins"} for group in cognito_groups)
+        is_moderator_group = any(group in {"mod", "mods", "moderator", "moderators"} for group in cognito_groups)
         given_name = claims.get("given_name") or ""
         family_name = claims.get("family_name") or ""
         full_name = claims.get("name")
@@ -474,6 +511,28 @@ class CognitoLoginView(APIView):
                     user.last_name = family_name
                     updated_fields.append("last_name")
 
+            if is_admin_group or is_moderator_group:
+                if not user.is_staff:
+                    user.is_staff = True
+                    updated_fields.append("is_staff")
+
+                role = getattr(user, "role", None)
+                role_name = role.name.lower() if role else ""
+                if is_admin_group and role_name != "admin":
+                    admin_role, _ = UserRole.objects.get_or_create(
+                        name="admin",
+                        defaults={"description": "Admin access via Cognito group."},
+                    )
+                    user.role = admin_role
+                    updated_fields.append("role")
+                elif is_moderator_group and role_name not in {"admin", "moderator"}:
+                    moderator_role, _ = UserRole.objects.get_or_create(
+                        name="moderator",
+                        defaults={"description": "Moderator access via Cognito group."},
+                    )
+                    user.role = moderator_role
+                    updated_fields.append("role")
+
             if updated_fields:
                 user.save(update_fields=updated_fields)
 
@@ -497,7 +556,7 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
-            user = serializer.save()
+            user = cast(User, serializer.save())
             profile = cast(UserProfile | None, getattr(user, "profile", None))
             if profile and not profile.display_name:
                 profile.display_name = user.username
@@ -511,3 +570,47 @@ class RegisterView(APIView):
             "user": UserSerializer(user, context={"request": request}).data,
         }
         return Response(payload, status=status.HTTP_201_CREATED)
+
+
+class AdminUserViewSet(viewsets.ModelViewSet):
+    serializer_class = AdminUserSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminRole]
+    filterset_fields = ["is_staff", "is_superuser", "is_active", "role__name"]
+    search_fields = ["username", "email", "profile__display_name"]
+    queryset = User.objects.select_related("profile", "role").all()
+
+
+class UserRoleViewSet(viewsets.ModelViewSet):
+    serializer_class = UserRoleSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminRole]
+    queryset = UserRole.objects.all().order_by("name")
+
+
+class SiteSettingsView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdminRole]
+
+    @staticmethod
+    def _get_settings() -> SiteSettings:
+        settings_obj = SiteSettings.objects.first()
+        if settings_obj:
+            return settings_obj
+        return SiteSettings.objects.create()
+
+    def get(self, request, *args, **kwargs):  # type: ignore[override]
+        settings_obj = self._get_settings()
+        serializer = SiteSettingsSerializer(settings_obj)
+        return Response(serializer.data)
+
+    def patch(self, request, *args, **kwargs):  # type: ignore[override]
+        settings_obj = self._get_settings()
+        serializer = SiteSettingsSerializer(settings_obj, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def put(self, request, *args, **kwargs):  # type: ignore[override]
+        settings_obj = self._get_settings()
+        serializer = SiteSettingsSerializer(settings_obj, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)

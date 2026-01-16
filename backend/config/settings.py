@@ -31,6 +31,8 @@ env = environ.Env(
     COGNITO_USER_POOL_ID=(str, ""),
     COGNITO_APP_CLIENT_ID=(str, ""),
     COGNITO_USER_POOL_CLIENT_ID=(str, ""),
+    COGNITO_APP_CLIENT_IDS=(list, []),
+    COGNITO_DEBUG_ERRORS=(bool, False),
     STATIC_URL=(str, "static/"),
     MEDIA_URL=(str, "media/"),
     AWS_STORAGE_BUCKET_NAME=(str, ""),
@@ -115,7 +117,15 @@ else:
 
 COGNITO_REGION = env("COGNITO_REGION")
 COGNITO_USER_POOL_ID = env("COGNITO_USER_POOL_ID")
-COGNITO_APP_CLIENT_ID = env("COGNITO_APP_CLIENT_ID") or env("COGNITO_USER_POOL_CLIENT_ID")
+COGNITO_USER_POOL_CLIENT_ID = env("COGNITO_USER_POOL_CLIENT_ID")
+COGNITO_APP_CLIENT_ID = env("COGNITO_APP_CLIENT_ID") or COGNITO_USER_POOL_CLIENT_ID
+_raw_cognito_client_ids = [client.strip() for client in env.list("COGNITO_APP_CLIENT_IDS") if client.strip()]
+COGNITO_APP_CLIENT_IDS = _raw_cognito_client_ids or [
+    client_id
+    for client_id in (COGNITO_APP_CLIENT_ID, COGNITO_USER_POOL_CLIENT_ID)
+    if client_id
+]
+COGNITO_APP_CLIENT_IDS = list(dict.fromkeys(COGNITO_APP_CLIENT_IDS))
 
 
 DEBUG = env.bool("DEBUG")
@@ -169,6 +179,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "config.middleware.MaintenanceModeMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",

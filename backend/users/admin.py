@@ -3,7 +3,7 @@ from __future__ import annotations
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import User, UserProfile, UserRole
+from .models import SiteSettings, User, UserProfile, UserRole
 
 
 @admin.register(UserRole)
@@ -30,3 +30,8 @@ class UserAdmin(DjangoUserAdmin):
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ("user", "display_name", "location")
     search_fields = ("user__username", "display_name", "location")
+
+
+@admin.register(SiteSettings)
+class SiteSettingsAdmin(admin.ModelAdmin):
+    list_display = ("maintenance_mode", "updated_at")
