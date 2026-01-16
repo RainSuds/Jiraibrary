@@ -411,14 +411,14 @@ export default function LoginPage() {
         {mode === "login" ? (
           <>
             <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
-              Email
+              Username or email
               <input
-                type="email"
+                type="text"
                 className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-slate-700 shadow-sm focus:border-rose-400 focus:outline-none"
                 value={identifier}
                 onChange={(event) => setIdentifier(event.target.value)}
                 required
-                autoComplete="email"
+                autoComplete="username"
               />
             </label>
             <label className="flex flex-col gap-2 text-sm font-medium text-rose-600">
