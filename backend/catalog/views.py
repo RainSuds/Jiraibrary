@@ -1234,8 +1234,14 @@ class PublicUserSubmissionListView(generics.ListAPIView):
 
 
 class ItemReviewListCreateView(generics.ListCreateAPIView):
+    serializer_class = serializers.ItemReviewSerializer
     parser_classes = [MultiPartParser, FormParser]
     pagination_class = None
+
+    def get_serializer_class(self):  # type: ignore[override]
+        if self.request.method.upper() == "POST":
+            return serializers.ItemReviewCreateSerializer
+        return serializers.ItemReviewSerializer
 
     def get_permissions(self):  # type: ignore[override]
         if self.request.method.upper() == "POST":
@@ -1258,32 +1264,6 @@ class ItemReviewListCreateView(generics.ListCreateAPIView):
             except (TypeError, ValueError):
                 pass
         return queryset
-
-
-class AdminItemReviewViewSet(viewsets.ModelViewSet):
-    queryset = models.ItemReview.objects.select_related("author", "item").prefetch_related("images").all()
-    serializer_class = serializers.AdminItemReviewSerializer
-    permission_classes = [permissions.IsAuthenticated, IsCatalogEditor]
-    http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
-
-    def perform_create(self, serializer):  # type: ignore[override]
-        serializer.save(author=self.request.user)
-
-    def perform_update(self, serializer):  # type: ignore[override]
-        previous = self.get_object()
-        updated = serializer.save()
-        if updated.status != previous.status and updated.status in {
-            models.ItemReview.ModerationStatus.APPROVED,
-            models.ItemReview.ModerationStatus.REJECTED,
-        }:
-            updated.moderated_by = self.request.user
-            updated.moderated_at = timezone.now()
-            updated.save(update_fields=["moderated_by", "moderated_at"])
-
-    def get_serializer_class(self):  # type: ignore[override]
-        if self.request.method.upper() == "POST":
-            return serializers.ItemReviewCreateSerializer
-        return serializers.ItemReviewSerializer
 
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:  # type: ignore[override]
         item = get_object_or_404(models.Item, slug=kwargs.get("slug"))
@@ -1317,6 +1297,32 @@ class AdminItemReviewViewSet(viewsets.ModelViewSet):
             )
         output = serializers.ItemReviewSerializer(review, context=self.get_serializer_context())
         return Response(output.data, status=status.HTTP_201_CREATED)
+
+
+class AdminItemReviewViewSet(viewsets.ModelViewSet):
+    queryset = models.ItemReview.objects.select_related("author", "item").prefetch_related("images").all()
+    serializer_class = serializers.AdminItemReviewSerializer
+    permission_classes = [permissions.IsAuthenticated, IsCatalogEditor]
+    http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        serializer.save(author=self.request.user)
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        previous = self.get_object()
+        updated = serializer.save()
+        if updated.status != previous.status and updated.status in {
+            models.ItemReview.ModerationStatus.APPROVED,
+            models.ItemReview.ModerationStatus.REJECTED,
+        }:
+            updated.moderated_by = self.request.user
+            updated.moderated_at = timezone.now()
+            updated.save(update_fields=["moderated_by", "moderated_at"])
+
+    def get_serializer_class(self):  # type: ignore[override]
+        if self.request.method.upper() == "POST":
+            return serializers.ItemReviewCreateSerializer
+        return serializers.ItemReviewSerializer
 
 
 class ItemReviewModerateView(generics.UpdateAPIView):
