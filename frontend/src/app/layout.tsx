@@ -4,7 +4,9 @@ import "./globals.css";
 
 import { AuthProvider } from "@/components/auth-provider";
 import ClientProviders from "@/components/client-providers";
+import { CurrencyProvider } from "@/components/currency-provider";
 import { FlashProvider } from "@/components/flash-provider";
+import { LocaleProvider } from "@/components/locale-provider";
 import NavigationBar from "@/components/navigation-bar";
 
 const geistSans = Geist({
@@ -36,16 +38,20 @@ export default function RootLayout({
         <ClientProviders>
           <FlashProvider>
             <AuthProvider>
-              <div className="flex min-h-screen flex-col">
-                <NavigationBar />
-                <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">{children}</main>
-                <footer className="border-t border-rose-100/80 bg-white/75">
-                  <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4 text-sm text-rose-500">
-                    <span>© {new Date().getFullYear()} Jiraibrary.</span>
-                    <span>Curating Jirai Kei fashion references.</span>
+              <LocaleProvider>
+                <CurrencyProvider>
+                  <div className="flex min-h-screen flex-col">
+                    <NavigationBar />
+                    <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">{children}</main>
+                    <footer className="border-t border-rose-100/80 bg-white/75">
+                      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4 text-sm text-rose-500">
+                        <span>© {new Date().getFullYear()} Jiraibrary.</span>
+                        <span>Curating Jirai Kei fashion references.</span>
+                      </div>
+                    </footer>
                   </div>
-                </footer>
-              </div>
+                </CurrencyProvider>
+              </LocaleProvider>
             </AuthProvider>
           </FlashProvider>
         </ClientProviders>

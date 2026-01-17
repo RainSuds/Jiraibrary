@@ -516,6 +516,10 @@ class CognitoLoginView(APIView):
                     user.is_staff = True
                     updated_fields.append("is_staff")
 
+                if is_admin_group and not user.is_superuser:
+                    user.is_superuser = True
+                    updated_fields.append("is_superuser")
+
                 role = getattr(user, "role", None)
                 role_name = role.name.lower() if role else ""
                 if is_admin_group and role_name != "admin":

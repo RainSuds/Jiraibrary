@@ -331,6 +331,27 @@ const resourceGroups: { title: string; resources: ResourceConfig[] }[] = [
     ],
   },
   {
+    title: "Ingestion",
+    resources: [
+      {
+        id: "ingestion",
+        label: "Ingestion jobs",
+        description: "Crawl a source URL and create a pending submission draft.",
+        listPath: "api/admin/ingestion/",
+        detailPath: (id) => `api/admin/ingestion/${encodeURIComponent(id)}/`,
+        idField: "id",
+        displayField: "source_url",
+        adminOnly: true,
+        defaultPayload: {
+          source_url: "",
+          source_language: "en",
+          brand_name: "",
+          brand_slug: "",
+        },
+      },
+    ],
+  },
+  {
     title: "Site",
     resources: [
       {
@@ -357,7 +378,7 @@ export default function AdminHubPage() {
   const { user, token, loading } = useAuth();
 
   const roleName = useMemo(() => user?.role?.name?.toLowerCase() ?? "user", [user]);
-  const isAdmin = Boolean(user?.is_superuser || roleName === "admin");
+  const isAdmin = Boolean(user?.is_superuser || roleName === "admin" || (user?.is_staff && roleName !== "moderator"));
   const isModerator = Boolean(user?.is_staff || roleName === "moderator" || isAdmin);
 
   const availableResources = useMemo(() => {
@@ -376,6 +397,7 @@ export default function AdminHubPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [roleMap, setRoleMap] = useState<Record<string, string | number>>({});
 
   const resource = useMemo(() => {
     for (const group of availableResources) {
@@ -422,6 +444,29 @@ export default function AdminHubPage() {
     },
     [token],
   );
+
+  useEffect(() => {
+    if (!token || !isAdmin) return;
+    const loadRoles = async () => {
+      try {
+        const data = await fetchJson("api/admin/roles/");
+        const list = Array.isArray(data)
+          ? data
+          : Array.isArray((data as { results?: unknown[] }).results)
+            ? (data as { results: unknown[] }).results
+            : [];
+        const mapped: Record<string, string | number> = {};
+        for (const entry of list as Array<{ id?: string | number; name?: string }>) {
+          if (!entry?.name || entry.id === undefined || entry.id === null) continue;
+          mapped[entry.name.toLowerCase()] = entry.id;
+        }
+        setRoleMap(mapped);
+      } catch (err) {
+        setRoleMap({});
+      }
+    };
+    void loadRoles();
+  }, [fetchJson, isAdmin, token]);
 
   const loadResource = useCallback(async () => {
     if (!resource) return;
@@ -533,6 +578,46 @@ export default function AdminHubPage() {
     }
   }, [fetchJson, loadResource, resource, selectedId]);
 
+  const handleUserRoleUpdate = useCallback(
+    async (target: "admin" | "moderator" | "user") => {
+      if (!resource || resource.id !== "users" || !selectedId) return;
+      setSaving(true);
+      setError(null);
+      setNotice(null);
+      try {
+        const adminRoleId = roleMap.admin;
+        const moderatorRoleId = roleMap.moderator ?? roleMap.mod;
+        const payload: Record<string, unknown> = {};
+
+        if (target === "admin") {
+          payload.is_staff = true;
+          payload.is_superuser = true;
+          if (adminRoleId !== undefined) payload.role_id = adminRoleId;
+        } else if (target === "moderator") {
+          payload.is_staff = true;
+          payload.is_superuser = false;
+          if (moderatorRoleId !== undefined) payload.role_id = moderatorRoleId;
+        } else {
+          payload.is_staff = false;
+          payload.is_superuser = false;
+          payload.role_id = null;
+        }
+
+        await fetchJson(resource.detailPath(selectedId), {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        setNotice("User role updated.");
+        await loadResource();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to update user role.");
+      } finally {
+        setSaving(false);
+      }
+    },
+    [fetchJson, loadResource, resource, roleMap, selectedId],
+  );
+
   if (loading) {
     return (
       <div className="mx-auto w-full max-w-4xl rounded-3xl border border-rose-100 bg-white/90 p-8 shadow-lg">
@@ -563,8 +648,9 @@ export default function AdminHubPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 lg:flex-row">
-      <aside className="w-full rounded-3xl border border-rose-100 bg-white/90 p-6 shadow-lg lg:w-72">
+    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-2 sm:px-3">
+      <div className="flex w-full flex-col gap-6 px-0 lg:flex-row">
+      <aside className="w-full rounded-2xl border border-rose-100 bg-white/90 p-4 shadow-lg lg:w-60">
         <div className="space-y-6">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-rose-400">Admin console</p>
@@ -603,6 +689,34 @@ export default function AdminHubPage() {
               <p className="text-sm text-rose-500">{resource?.description}</p>
             </div>
             <div className="flex flex-wrap gap-3">
+              {resource?.id === "users" && selectedId ? (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleUserRoleUpdate("admin")}
+                    disabled={saving}
+                    className="rounded-full border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 disabled:opacity-60"
+                  >
+                    Make admin
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleUserRoleUpdate("moderator")}
+                    disabled={saving}
+                    className="rounded-full border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 disabled:opacity-60"
+                  >
+                    Make mod
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleUserRoleUpdate("user")}
+                    disabled={saving}
+                    className="rounded-full border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-600 disabled:opacity-60"
+                  >
+                    Make user
+                  </button>
+                </div>
+              ) : null}
               {!resource?.single ? (
                 <button
                   type="button"
@@ -647,12 +761,13 @@ export default function AdminHubPage() {
               <span className="text-xs text-rose-400">{loadingResource ? "Loading…" : `${items.length} found`}</span>
             </div>
             <div className="mt-4 max-h-[460px] space-y-2 overflow-auto">
-              {items.map((item) => {
+              {items.map((item, index) => {
                 const idValue = item[resource?.idField ?? "id"] ? String(item[resource?.idField ?? "id"]) : "";
                 const display = item[resource?.displayField ?? "id"] ? String(item[resource?.displayField ?? "id"]) : idValue;
+                const key = idValue ? `${idValue}-${index}` : `row-${index}`;
                 return (
                   <button
-                    key={idValue}
+                    key={key}
                     type="button"
                     onClick={() => idValue && handleSelect(idValue)}
                     className={`w-full rounded-2xl border px-4 py-3 text-left text-sm transition ${
@@ -688,6 +803,7 @@ export default function AdminHubPage() {
           </div>
         </section>
       </main>
+    </div>
     </div>
   );
 }

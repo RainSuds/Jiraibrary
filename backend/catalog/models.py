@@ -972,3 +972,41 @@ class ItemSubmission(TimeStampedUUIDModel):
 
     def __str__(self) -> str:
         return f"{self.title} ({self.status})"
+
+
+class IngestionJob(TimeStampedUUIDModel):
+    class JobStatus(models.TextChoices):
+        QUEUED = "queued", _("Queued")
+        PROCESSING = "processing", _("Processing")
+        SUCCEEDED = "succeeded", _("Succeeded")
+        FAILED = "failed", _("Failed")
+
+    source_url = models.URLField()
+    source_language = models.CharField(max_length=10, default="en")
+    source_site = models.CharField(max_length=255, blank=True)
+    brand_name = models.CharField(max_length=255, blank=True)
+    brand_slug = models.SlugField(max_length=255, blank=True)
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="ingestion_jobs",
+    )
+    status = models.CharField(max_length=16, choices=JobStatus.choices, default=JobStatus.QUEUED)
+    raw_extracted = models.JSONField(default=dict, blank=True)
+    normalized_payload = models.JSONField(default=dict, blank=True)
+    summary = models.CharField(max_length=255, blank=True)
+    error_message = models.TextField(blank=True)
+    submission = models.ForeignKey(
+        ItemSubmission,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ingestion_jobs",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.source_url} ({self.status})"

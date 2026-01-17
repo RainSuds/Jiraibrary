@@ -6,7 +6,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { ChangeEvent, FocusEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
+import { useCurrency } from "@/components/currency-provider";
 import { useFlash } from "@/components/flash-provider";
+import { useLocale } from "@/components/locale-provider";
 import NavigationSearch from "@/components/navigation-search";
 import {
   CurrencySummary,
@@ -22,6 +24,8 @@ const CURRENCY_STORAGE_KEY = "jiraibrary.guest.currency";
 export default function NavigationBar() {
   const { user, logout, loading, updatePreferences } = useAuth();
   const { addFlash } = useFlash();
+  const { locale, setLocale } = useLocale();
+  const { currency, setCurrency } = useCurrency();
   const [pending, setPending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [preferencePending, setPreferencePending] = useState(false);
@@ -80,20 +84,28 @@ export default function NavigationBar() {
 
   useEffect(() => {
     if (user) {
-      setLanguageSelection(user.preferred_language ?? "en");
-      setCurrencySelection(user.preferred_currency ?? "USD");
+      const nextLanguage = user.preferred_language ?? "en";
+      setLanguageSelection(nextLanguage);
+      setLocale(nextLanguage);
+      const nextCurrency = user.preferred_currency ?? "USD";
+      setCurrencySelection(nextCurrency);
+      setCurrency(nextCurrency);
       return;
     }
     if (typeof window === "undefined") {
       setLanguageSelection("en");
+      setLocale("en");
       setCurrencySelection("USD");
+      setCurrency("USD");
       return;
     }
     const storedLanguage = window.localStorage.getItem(LANGUAGE_STORAGE_KEY) ?? "en";
     const storedCurrency = window.localStorage.getItem(CURRENCY_STORAGE_KEY) ?? "USD";
     setLanguageSelection(storedLanguage);
+    setLocale(storedLanguage);
     setCurrencySelection(storedCurrency);
-  }, [user]);
+    setCurrency(storedCurrency);
+  }, [setCurrency, setLocale, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,26 +149,28 @@ export default function NavigationBar() {
     (event: ChangeEvent<HTMLSelectElement>) => {
       const value = event.target.value;
       setLanguageSelection(value);
+      setLocale(value);
       if (user) {
         void applyPreferenceChange({ preferred_language: value });
       } else if (typeof window !== "undefined") {
         window.localStorage.setItem(LANGUAGE_STORAGE_KEY, value);
       }
     },
-    [applyPreferenceChange, user],
+    [applyPreferenceChange, setLocale, user],
   );
 
   const handleCurrencyChange = useCallback(
     (event: ChangeEvent<HTMLSelectElement>) => {
       const value = event.target.value;
       setCurrencySelection(value);
+      setCurrency(value);
       if (user) {
         void applyPreferenceChange({ preferred_currency: value });
       } else if (typeof window !== "undefined") {
         window.localStorage.setItem(CURRENCY_STORAGE_KEY, value);
       }
     },
-    [applyPreferenceChange, user],
+    [applyPreferenceChange, setCurrency, user],
   );
 
   return (

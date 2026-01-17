@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework.request import Request
 
 from . import filters, models, serializers
+from .ingestion import ingest_tokyo_kawaii_life
 from .permissions import IsCatalogEditor, IsImageOwnerOrCatalogEditor
 
 
@@ -1323,6 +1324,86 @@ class AdminItemReviewViewSet(viewsets.ModelViewSet):
         if self.request.method.upper() == "POST":
             return serializers.ItemReviewCreateSerializer
         return serializers.ItemReviewSerializer
+
+
+class IngestionJobViewSet(viewsets.ModelViewSet):
+    queryset = models.IngestionJob.objects.select_related("requested_by", "submission").all()
+    serializer_class = serializers.IngestionJobSerializer
+    permission_classes = [permissions.IsAuthenticated, IsCatalogEditor]
+    http_method_names = ["get", "post", "head", "options"]
+
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:  # type: ignore[override]
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        source_url = serializer.validated_data["source_url"]
+        source_language = serializer.validated_data.get("source_language") or "en"
+        brand_name = (serializer.validated_data.get("brand_name") or "").strip()
+        brand_slug = (serializer.validated_data.get("brand_slug") or "").strip()
+
+        job = models.IngestionJob.objects.create(
+            source_url=source_url,
+            source_language=source_language,
+            source_site="",
+            brand_name=brand_name,
+            brand_slug=brand_slug,
+            requested_by=request.user,
+            status=models.IngestionJob.JobStatus.PROCESSING,
+        )
+
+        try:
+            result = ingest_tokyo_kawaii_life(
+                source_url,
+                source_language,
+                brand_override=brand_name or None,
+                brand_slug_override=brand_slug or None,
+            )
+            submission_payload = result.payload
+            submission = models.ItemSubmission.objects.create(
+                user=request.user,
+                status=models.ItemSubmission.SubmissionStatus.PENDING,
+                **submission_payload,
+            )
+            job.submission = submission
+            job.raw_extracted = result.raw
+            job.normalized_payload = submission_payload
+            job.summary = submission_payload.get("title", "")
+            job.source_site = result.raw.get("source_site", job.source_site)
+            if brand_name:
+                job.brand_name = brand_name
+            if brand_slug:
+                job.brand_slug = brand_slug
+            job.status = models.IngestionJob.JobStatus.SUCCEEDED
+            job.error_message = ""
+            job.save(
+                update_fields=[
+                    "submission",
+                    "raw_extracted",
+                    "normalized_payload",
+                    "summary",
+                    "source_site",
+                    "brand_name",
+                    "brand_slug",
+                    "status",
+                    "error_message",
+                    "updated_at",
+                ]
+            )
+        except Exception as exc:
+            job.status = models.IngestionJob.JobStatus.FAILED
+            job.error_message = str(exc)
+            job.save(update_fields=["status", "error_message", "updated_at"])
+            return Response(
+                {
+                    "detail": "Failed to ingest source.",
+                    "error": str(exc),
+                    "job_id": str(job.id),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        output = self.get_serializer(job)
+        return Response(output.data, status=status.HTTP_201_CREATED)
 
 
 class ItemReviewModerateView(generics.UpdateAPIView):

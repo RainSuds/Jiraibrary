@@ -207,6 +207,14 @@ class ImageAdmin(admin.ModelAdmin):
     image_preview.short_description = "Preview"  # type: ignore[attr-defined]
 
 
+@admin.register(models.IngestionJob)
+class IngestionJobAdmin(admin.ModelAdmin):
+    list_display = ("source_url", "status", "source_language", "requested_by", "created_at")
+    list_filter = ("status", "source_language")
+    search_fields = ("source_url", "summary", "error_message")
+    readonly_fields = ("raw_extracted", "normalized_payload", "error_message")
+
+
 @admin.register(models.Language)
 class LanguageAdmin(admin.ModelAdmin):
     list_display = ("code", "name", "is_supported")

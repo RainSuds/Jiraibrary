@@ -35,6 +35,7 @@ from catalog.views import (  # type: ignore[F401]
     TagViewSet,
     PublicUserSubmissionListView,
     PublicUserReviewListView,
+    IngestionJobViewSet,
 )
 from users.views import (
     AdminUserViewSet,
@@ -70,6 +71,7 @@ router.register(r"wardrobe", WardrobeEntryViewSet, basename="wardrobe-entry")
 router.register(r"item-submissions", ItemSubmissionViewSet, basename="item-submission")
 router.register(r"submissions/drafts", SubmissionDraftViewSet, basename="submission-draft")
 router.register(r"admin/reviews", AdminItemReviewViewSet, basename="admin-reviews")
+router.register(r"admin/ingestion", IngestionJobViewSet, basename="admin-ingestion")
 router.register(r"admin/users", AdminUserViewSet, basename="admin-user")
 router.register(r"admin/roles", UserRoleViewSet, basename="admin-role")
 

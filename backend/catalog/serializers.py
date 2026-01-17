@@ -2004,6 +2004,49 @@ class AdminItemSubmissionSerializer(ItemSubmissionSerializer):
         ]
 
 
+class IngestionJobSerializer(serializers.ModelSerializer):
+    requested_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    submission = serializers.PrimaryKeyRelatedField(read_only=True)
+    status = serializers.CharField(read_only=True)
+    raw_extracted = serializers.JSONField(read_only=True)
+    normalized_payload = serializers.JSONField(read_only=True)
+    summary = serializers.CharField(read_only=True)
+    error_message = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = models.IngestionJob
+        fields = [
+            "id",
+            "source_url",
+            "source_language",
+            "source_site",
+            "brand_name",
+            "brand_slug",
+            "status",
+            "summary",
+            "error_message",
+            "raw_extracted",
+            "normalized_payload",
+            "requested_by",
+            "submission",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "source_site",
+            "status",
+            "summary",
+            "error_message",
+            "raw_extracted",
+            "normalized_payload",
+            "requested_by",
+            "submission",
+            "created_at",
+            "updated_at",
+        ]
+
+
 class ReviewImageSerializer(serializers.ModelSerializer):
     url = serializers.SerializerMethodField()
 

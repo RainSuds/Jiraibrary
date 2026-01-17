@@ -115,7 +115,7 @@ function ProfilePageContent() {
   }, [copyFeedback]);
 
   const roleName = user?.role?.name?.toLowerCase() ?? "user";
-  const isAdmin = Boolean(user?.is_superuser || roleName === "admin");
+  const isAdmin = Boolean(user?.is_superuser || roleName === "admin" || (user?.is_staff && roleName !== "moderator"));
   const isModerator = Boolean(user?.is_staff || isAdmin || roleName === "moderator");
 
   const availableTabs = useMemo<ProfileTab[]>(() => {
@@ -238,15 +238,6 @@ function ProfilePageContent() {
       selectTab(fallbackTabId);
     }
   }, [availableTabs, fallbackTabId, panelParam, selectTab]);
-
-  useEffect(() => {
-    if (loading) {
-      return;
-    }
-    if (panelParam === "admin" && isAdmin) {
-      router.replace("/admin");
-    }
-  }, [isAdmin, loading, panelParam, router]);
 
   if (loading) {
     return (
@@ -784,6 +775,9 @@ function ProfilePageContent() {
               <h3 className="text-lg font-semibold text-rose-900">Quick links</h3>
               <p className="text-sm text-rose-500">Jump to the existing tools while this panel is wired up.</p>
               <div className="mt-4 flex flex-wrap gap-3 text-xs">
+                <Link href="/moderation" className="rounded-full border border-rose-200 px-3 py-1 text-rose-700">
+                  Open moderation dashboard
+                </Link>
                 <Link href="/admin/" target="_blank" className="rounded-full border border-rose-200 px-3 py-1 text-rose-700">
                   Open Django admin
                 </Link>
@@ -802,13 +796,20 @@ function ProfilePageContent() {
             <div className="rounded-3xl border border-dashed border-rose-200 bg-white/70 p-6 text-sm text-rose-500">
               Admin analytics and management shortcuts will appear once the dashboard is powered by live data.
             </div>
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Link href="/admin/" target="_blank" className="rounded-3xl border border-rose-100 bg-white p-5 text-sm text-rose-700">
-                Open Django admin
-              </Link>
-              <Link href="/profile?panel=moderation" className="rounded-3xl border border-rose-100 bg-white p-5 text-sm text-rose-700">
-                View moderation panel
-              </Link>
+            <div className="rounded-3xl border border-rose-100 bg-white p-5">
+              <h3 className="text-lg font-semibold text-rose-900">Admin dashboard</h3>
+              <p className="text-sm text-rose-500">Open the full management console to edit users, roles, catalog data, and site settings.</p>
+              <div className="mt-4 flex flex-wrap gap-3 text-xs">
+                <Link href="/admin" className="rounded-full border border-rose-200 px-3 py-1 text-rose-700">
+                  Open admin dashboard
+                </Link>
+                <Link href="/admin/" target="_blank" className="rounded-full border border-rose-200 px-3 py-1 text-rose-700">
+                  Open Django admin
+                </Link>
+                <Link href="/profile?panel=moderation" className="rounded-full border border-rose-200 px-3 py-1 text-rose-700">
+                  View moderation panel
+                </Link>
+              </div>
             </div>
           </div>
         ) : (

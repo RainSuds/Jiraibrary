@@ -17,7 +17,7 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    const response = await fetch(`${API_BASE}api/users/me/`, {
+    const response = await fetch(`${API_BASE}api/auth/me/`, {
       headers: {
         Accept: "application/json",
         Authorization: `Token ${token}`,
