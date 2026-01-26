@@ -1,13 +1,17 @@
 """Serializers backing the REST API for catalog resources."""
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional, cast
 
 PLACEHOLDER_IMAGE_URL = "https://placehold.co/600x800?text=Jiraibrary"
 
+import requests
+
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 
 from . import models
@@ -35,6 +39,82 @@ UNIT_SYSTEM_CHOICES = ("metric", "imperial")
 
 CM_PER_INCH = Decimal("2.54")
 TWO_DECIMAL_PLACES = Decimal("0.01")
+
+FX_RATE_CACHE_TTL_SECONDS = 60 * 60
+
+
+def _get_fx_rate(base_currency: str, target_currency: str) -> Decimal | None:
+    if base_currency.upper() == target_currency.upper():
+        return Decimal("1")
+    cache_key = f"fx-rate:{base_currency.upper()}:{target_currency.upper()}"
+    cached = cache.get(cache_key)
+    if cached:
+        try:
+            return Decimal(str(cached))
+        except (InvalidOperation, TypeError):
+            cache.delete(cache_key)
+
+    rate_value: Decimal | None = None
+    base = base_currency.upper()
+    target = target_currency.upper()
+    sources = [
+        (
+            "https://api.exchangerate.host/latest",
+            {"base": base, "symbols": target},
+            lambda payload: payload.get("rates", {}).get(target),
+        ),
+        (
+            f"https://api.frankfurter.app/latest",
+            {"from": base, "to": target},
+            lambda payload: payload.get("rates", {}).get(target),
+        ),
+        (
+            f"https://open.er-api.com/v6/latest/{base}",
+            None,
+            lambda payload: payload.get("rates", {}).get(target),
+        ),
+    ]
+
+    for url, params, extractor in sources:
+        try:
+            response = requests.get(url, params=params, timeout=5)
+            response.raise_for_status()
+            payload = response.json()
+            rate = extractor(payload)
+            if rate is None:
+                continue
+            rate_value = Decimal(str(rate))
+            break
+        except (requests.RequestException, InvalidOperation, ValueError, TypeError):
+            continue
+
+    if rate_value is None:
+        return None
+
+    cache.set(cache_key, str(rate_value), FX_RATE_CACHE_TTL_SECONDS)
+    return rate_value
+
+
+def _convert_price_to_currency(
+    price: models.ItemPrice,
+    target_currency: str,
+) -> dict[str, Any] | None:
+    base_currency = price.currency.code if price.currency else None
+    if not base_currency:
+        return None
+    rate = _get_fx_rate(base_currency, target_currency)
+    if rate is None:
+        return None
+    try:
+        converted_amount = (Decimal(price.amount) * rate).quantize(TWO_DECIMAL_PLACES)
+    except (InvalidOperation, TypeError):
+        return None
+    return {
+        "currency": target_currency.upper(),
+        "amount": f"{converted_amount}",
+        "source": models.ItemPrice.Source.CONVERTED,
+        "rate_used": f"{rate}",
+    }
 
 
 class LanguageSerializer(serializers.ModelSerializer):
@@ -442,27 +522,28 @@ class ItemVariantSerializer(serializers.ModelSerializer):
         return str(color_id) if color_id else None
 
 
-class ItemMeasurementSerializer(serializers.ModelSerializer):
+class VariantMeasurementSerializer(serializers.ModelSerializer):
     variant = ItemVariantSerializer(read_only=True)
+    measurement_type = serializers.SerializerMethodField()
 
     class Meta:
-        model = models.ItemMeasurement
+        model = models.VariantMeasurement
         fields = [
             "id",
             "variant",
-            "is_one_size",
-            "bust_cm",
-            "waist_cm",
-            "hip_cm",
-            "length_cm",
-            "sleeve_length_cm",
-            "hem_cm",
-            "heel_height_cm",
-            "bag_depth_cm",
-            "fit_notes",
+            "measurement_type",
+            "min_value",
+            "max_value",
             "created_at",
             "updated_at",
         ]
+
+    def get_measurement_type(self, obj: models.VariantMeasurement) -> dict[str, str]:
+        measurement_type = obj.measurement_type
+        return {
+            "name": measurement_type.name,
+            "unit": measurement_type.unit,
+        }
 
 
 class ItemMetadataSerializer(serializers.ModelSerializer):
@@ -513,9 +594,25 @@ class ItemSummarySerializer(serializers.ModelSerializer):
             "tags",
             "status",
             "cover_image",
+            "extra_metadata",
         ]
 
     def get_name(self, obj: models.Item) -> str:
+        request = cast(Any, self.context.get("request")) if hasattr(self, "context") else None
+        preferred_language = None
+        if request is not None:
+            preferred_language = request.query_params.get("language")
+        if preferred_language:
+            normalized = preferred_language.strip().lower()
+            translations_manager = getattr(obj, "translations", None)
+            if translations_manager is not None:
+                for translation in translations_manager.all():
+                    if (
+                        translation.language
+                        and translation.language.code.lower() == normalized
+                        and translation.name
+                    ):
+                        return translation.name
         return obj.display_name()
 
     def get_brand(self, obj: models.Item) -> dict | None:
@@ -547,6 +644,26 @@ class ItemSummarySerializer(serializers.ModelSerializer):
         prices = list(prices_manager.all())
         if not prices:
             return None
+        request = cast(Any, self.context.get("request")) if hasattr(self, "context") else None
+        preferred_currency = None
+        if request is not None:
+            preferred_currency = request.query_params.get("currency")
+        if preferred_currency:
+            normalized = preferred_currency.strip().upper()
+            candidates = [price for price in prices if price.currency and price.currency.code == normalized]
+            if candidates:
+                primary = next(
+                    (price for price in candidates if price.source == models.ItemPrice.Source.ORIGIN),
+                    candidates[0],
+                )
+                return cast(Dict[str, Any], ItemPriceSerializer(primary).data)
+            fallback_source = next(
+                (price for price in prices if price.source == models.ItemPrice.Source.ORIGIN),
+                prices[0],
+            )
+            converted = _convert_price_to_currency(fallback_source, normalized)
+            if converted:
+                return converted
         primary = next(
             (price for price in prices if price.source == models.ItemPrice.Source.ORIGIN),
             prices[0],
@@ -611,10 +728,13 @@ class ItemDetailSerializer(ItemSummarySerializer):
     limited_edition = serializers.BooleanField()
     metadata = serializers.SerializerMethodField()
     extra_metadata = serializers.SerializerMethodField()
+    reference_urls = serializers.ListField(child=serializers.URLField(), required=False)
     translations = serializers.SerializerMethodField()
     prices = serializers.SerializerMethodField()
     variants = serializers.SerializerMethodField()
+    variant_measurements = serializers.SerializerMethodField()
     collections = serializers.SerializerMethodField()
+    styles = serializers.SerializerMethodField()
     substyles = serializers.SerializerMethodField()
     fabrics = serializers.SerializerMethodField()
     features = serializers.SerializerMethodField()
@@ -633,10 +753,13 @@ class ItemDetailSerializer(ItemSummarySerializer):
             "limited_edition",
             "metadata",
             "extra_metadata",
+            "reference_urls",
             "translations",
             "prices",
             "variants",
+            "variant_measurements",
             "collections",
+            "styles",
             "substyles",
             "fabrics",
             "features",
@@ -672,13 +795,41 @@ class ItemDetailSerializer(ItemSummarySerializer):
         prices_manager: Any = getattr(obj, "prices", None)
         if prices_manager is None:
             return []
-        return cast(List[Dict[str, Any]], ItemPriceSerializer(prices_manager.all(), many=True).data)
+        prices = list(prices_manager.all())
+        results = cast(List[Dict[str, Any]], ItemPriceSerializer(prices, many=True).data)
+        request = cast(Any, self.context.get("request")) if hasattr(self, "context") else None
+        preferred_currency = None
+        if request is not None:
+            preferred_currency = request.query_params.get("currency")
+        if preferred_currency:
+            normalized = preferred_currency.strip().upper()
+            if not any(
+                price.currency and price.currency.code == normalized for price in prices
+            ):
+                fallback_source = next(
+                    (price for price in prices if price.source == models.ItemPrice.Source.ORIGIN),
+                    prices[0],
+                )
+                converted = _convert_price_to_currency(fallback_source, normalized)
+                if converted:
+                    results.append(converted)
+        return results
 
     def get_variants(self, obj: models.Item) -> list[dict]:
         variants_manager: Any = getattr(obj, "variants", None)
         if variants_manager is None:
             return []
         return cast(List[Dict[str, Any]], ItemVariantSerializer(variants_manager.all(), many=True).data)
+
+    def get_variant_measurements(self, obj: models.Item) -> list[dict]:
+        measurements = (
+            models.VariantMeasurement.objects.filter(variant__item=obj)
+            .select_related("variant", "measurement_type")
+            .all()
+        )
+        if not measurements:
+            return []
+        return cast(List[Dict[str, Any]], VariantMeasurementSerializer(measurements, many=True).data)
 
     def get_collections(self, obj: models.Item) -> list[dict]:
         collection_links: Any = getattr(obj, "itemcollection_set", None)
@@ -700,6 +851,19 @@ class ItemDetailSerializer(ItemSummarySerializer):
                 }
             )
         return results
+
+    def get_styles(self, obj: models.Item) -> list[dict]:
+        styles_manager: Any = getattr(obj, "styles", None)
+        if styles_manager is None:
+            return []
+        return [
+            {
+                "id": str(style.id),
+                "name": style.name,
+                "slug": style.slug,
+            }
+            for style in styles_manager.all()
+        ]
 
     def get_substyles(self, obj: models.Item) -> list[dict]:
         substyle_links: Any = getattr(obj, "itemsubstyle_set", None)
@@ -854,18 +1018,11 @@ class ItemVariantInputSerializer(serializers.Serializer):
     notes = serializers.JSONField(required=False)
 
 
-class ItemMeasurementInputSerializer(serializers.Serializer):
+class VariantMeasurementInputSerializer(serializers.Serializer):
     variant_label = serializers.CharField(required=False, allow_blank=True)
-    is_one_size = serializers.BooleanField(required=False)
-    bust_cm = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
-    waist_cm = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
-    hip_cm = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
-    length_cm = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
-    sleeve_length_cm = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
-    hem_cm = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
-    heel_height_cm = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
-    bag_depth_cm = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
-    fit_notes = serializers.CharField(required=False, allow_blank=True)
+    measurement_type = serializers.CharField()
+    min_value = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, allow_null=True)
+    max_value = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, allow_null=True)
 
 
 class ItemTagInputSerializer(serializers.Serializer):
@@ -925,6 +1082,9 @@ class ItemWriteSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=models.Item.ItemStatus.choices, required=False)
     extra_metadata = serializers.JSONField(required=False)
     metadata = ItemMetadataInputSerializer(required=False)
+    reference_urls = serializers.ListField(
+        child=serializers.URLField(), required=False, allow_empty=True
+    )
     translations = ItemTranslationInputSerializer(many=True)
     tags = ItemTagInputSerializer(many=True, required=False)
     colors = ItemColorInputSerializer(many=True, required=False)
@@ -934,7 +1094,7 @@ class ItemWriteSerializer(serializers.Serializer):
     collections = ItemCollectionInputSerializer(many=True, required=False)
     prices = ItemPriceInputSerializer(many=True, required=False)
     variants = ItemVariantInputSerializer(many=True, required=False)
-    measurements = ItemMeasurementInputSerializer(many=True, required=False)
+    measurements = VariantMeasurementInputSerializer(many=True, required=False)
     images = ItemImageLinkSerializer(many=True, required=False)
 
     def validate_translations(self, value: List[dict]) -> List[dict]:  # type: ignore[override]
@@ -1215,7 +1375,7 @@ class ItemWriteSerializer(serializers.Serializer):
         entries: List[Dict[str, Any]],
         variant_map: Dict[str, models.ItemVariant],
     ) -> None:
-        models.ItemMeasurement.objects.filter(item=item).delete()
+        models.VariantMeasurement.objects.filter(variant__item=item).delete()
         for entry in entries:
             variant_label_raw = entry.get("variant_label", "") or ""
             variant_key = variant_label_raw.strip().lower()
@@ -1226,19 +1386,21 @@ class ItemWriteSerializer(serializers.Serializer):
                     raise serializers.ValidationError(
                         {"measurements": f"Unknown variant label '{variant_label_raw}' referenced by measurements."}
                     )
-            models.ItemMeasurement.objects.create(
-                item=item,
+            measurement_name = entry.get("measurement_type")
+            if not measurement_name:
+                raise serializers.ValidationError({"measurements": "measurement_type is required."})
+            measurement_type = models.MeasurementType.objects.filter(name=measurement_name).first()
+            if measurement_type is None:
+                raise serializers.ValidationError(
+                    {"measurements": f"Unknown measurement_type '{measurement_name}'."}
+                )
+            if variant is None:
+                raise serializers.ValidationError({"measurements": "variant_label is required for measurements."})
+            models.VariantMeasurement.objects.create(
                 variant=variant,
-                is_one_size=entry.get("is_one_size", False),
-                bust_cm=entry.get("bust_cm"),
-                waist_cm=entry.get("waist_cm"),
-                hip_cm=entry.get("hip_cm"),
-                length_cm=entry.get("length_cm"),
-                sleeve_length_cm=entry.get("sleeve_length_cm"),
-                hem_cm=entry.get("hem_cm"),
-                heel_height_cm=entry.get("heel_height_cm"),
-                bag_depth_cm=entry.get("bag_depth_cm"),
-                fit_notes=entry.get("fit_notes", ""),
+                measurement_type=measurement_type,
+                min_value=entry.get("min_value"),
+                max_value=entry.get("max_value"),
             )
 
     def _sync_images(
@@ -2002,6 +2164,44 @@ class AdminItemSubmissionSerializer(ItemSubmissionSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def update(self, instance: models.ItemSubmission, validated_data: dict[str, Any]) -> models.ItemSubmission:  # type: ignore[override]
+        previous_status = instance.status
+        updated = super().update(instance, validated_data)
+        new_status = updated.status
+
+        if (
+            previous_status != new_status
+            and new_status == models.ItemSubmission.SubmissionStatus.APPROVED
+        ):
+            request = self.context.get("request")
+            approver_name = None
+            if request is not None and getattr(request, "user", None):
+                user = request.user
+                approver_name = (
+                    getattr(user, "display_name", "")
+                    or getattr(user, "username", "")
+                    or str(user)
+                )
+
+            item = updated.linked_item
+            if item is None and updated.item_slug:
+                item = models.Item.objects.filter(slug=updated.item_slug).first()
+
+            if item is not None:
+                extra_metadata = item.extra_metadata or {}
+                if approver_name:
+                    extra_metadata["approver"] = approver_name
+                    extra_metadata["approved_by"] = approver_name
+                    extra_metadata["editor"] = approver_name
+                    extra_metadata["last_editor"] = approver_name
+                item.extra_metadata = extra_metadata
+                if updated.user and not item.submitted_by_id:
+                    item.submitted_by = updated.user
+                item.approved_at = timezone.now()
+                item.save(update_fields=["extra_metadata", "submitted_by", "approved_at", "updated_at"])
+
+        return updated
 
 
 class IngestionJobSerializer(serializers.ModelSerializer):

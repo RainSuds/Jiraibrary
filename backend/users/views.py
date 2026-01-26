@@ -299,6 +299,10 @@ class CurrentUserView(APIView):
             profile.preferred_currency = validated.get("preferred_currency") or ""
             update_fields.append("preferred_currency")
 
+        if "preferred_measurement_system" in validated:
+            profile.preferred_measurement_system = validated.get("preferred_measurement_system") or ""
+            update_fields.append("preferred_measurement_system")
+
         if update_fields:
             update_fields.append("updated_at")
             profile.save(update_fields=update_fields)

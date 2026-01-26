@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 
 import ItemDetailClient from "./item-detail-client";
 
@@ -10,9 +11,15 @@ type ItemDetailPageProps = {
 
 export default async function ItemDetailPage({ params }: ItemDetailPageProps) {
   const resolvedParams = await params;
+  const cookieStore = await cookies();
+  const preferredLanguage = cookieStore.get("jiraibrary.guest.language")?.value ?? "en";
+  const preferredCurrency = cookieStore.get("jiraibrary.guest.currency")?.value ?? "USD";
   let item;
   try {
-    item = await getItemDetail(resolvedParams.slug);
+    item = await getItemDetail(resolvedParams.slug, {
+      language: preferredLanguage,
+      currency: preferredCurrency,
+    });
   } catch {
     notFound();
   }

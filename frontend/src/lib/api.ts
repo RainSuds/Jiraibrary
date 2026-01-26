@@ -330,6 +330,7 @@ export type ItemSummary = {
   colors: ColorSummary[];
   tags: TagSummary[];
   cover_image: ImagePreview | null;
+  extra_metadata: Record<string, unknown> | null;
 };
 
 export type ItemTranslationPayload = {
@@ -350,6 +351,19 @@ export type ItemPriceDetail = {
   amount: string;
   source: string;
   rate_used: string | null;
+};
+
+export type VariantMeasurementDetail = {
+  id: string;
+  variant: ItemVariantPayload;
+  measurement_type: {
+    name: string;
+    unit: string;
+  };
+  min_value: string | null;
+  max_value: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type ItemVariantPayload = {
@@ -439,6 +453,8 @@ export type ItemListResponse = {
     collection: string[];
     fabric: string[];
     feature: string[];
+    season: string | null;
+    fit: string | null;
     measurement: {
       bust_min: number | null;
       bust_max: number | null;
@@ -449,6 +465,12 @@ export type ItemListResponse = {
       length_min: number | null;
       length_max: number | null;
     };
+    measurement_ranges: {
+      name: string;
+      min: number | null;
+      max: number | null;
+      value_key: string;
+    }[];
     release_year_ranges: {
       min: number | null;
       max: number | null;
@@ -484,12 +506,15 @@ export type ItemDetail = {
   updated_at: string;
   metadata: ItemMetadataPayload | null;
   extra_metadata: Record<string, unknown> | null;
+  reference_urls?: string[];
   translations: ItemTranslationPayload[];
   prices: ItemPriceDetail[];
   variants: ItemVariantPayload[];
+  variant_measurements: VariantMeasurementDetail[];
   colors: ColorSummary[];
   tags: TagSummary[];
   collections: ItemCollectionPlacement[];
+  styles: StyleSummary[];
   substyles: ItemSubstyleDetail[];
   fabrics: ItemFabricDetail[];
   features: ItemFeatureDetail[];
@@ -565,8 +590,11 @@ export async function getItemList(
   return fetchJson<ItemListResponse>("api/items/", params, { cache: "no-store" });
 }
 
-export async function getItemDetail(slug: string): Promise<ItemDetail> {
-  return fetchJson<ItemDetail>(`api/items/${encodePathSegment(slug)}/`, undefined, {
+export async function getItemDetail(
+  slug: string,
+  params?: Record<string, string | undefined>
+): Promise<ItemDetail> {
+  return fetchJson<ItemDetail>(`api/items/${encodePathSegment(slug)}/`, params, {
     cache: "no-store",
   });
 }
@@ -660,6 +688,7 @@ export type UserProfile = {
   website?: string | null;
   preferred_language: string | null;
   preferred_currency: string | null;
+  preferred_measurement_system?: string | null;
   share_owned_public?: boolean;
   share_wishlist_public?: boolean;
   auth_provider?: "password" | "google" | "cognito";
@@ -673,6 +702,7 @@ export type AuthResponse = {
 export type UpdateUserPreferencesPayload = {
   preferred_language?: string | null;
   preferred_currency?: string | null;
+  preferred_measurement_system?: string | null;
   share_owned_public?: boolean;
   share_wishlist_public?: boolean;
 };
@@ -1044,16 +1074,9 @@ export type ItemVariantInput = {
 
 export type ItemMeasurementInput = {
   variant_label?: string | null;
-  is_one_size?: boolean;
-  bust_cm?: number | null;
-  waist_cm?: number | null;
-  hip_cm?: number | null;
-  length_cm?: number | null;
-  sleeve_length_cm?: number | null;
-  hem_cm?: number | null;
-  heel_height_cm?: number | null;
-  bag_depth_cm?: number | null;
-  fit_notes?: string;
+  measurement_type: string;
+  min_value?: number | null;
+  max_value?: number | null;
 };
 
 export type ItemImageAssociation = {
@@ -1081,6 +1104,7 @@ export type ItemCreatePayload = {
   status?: string;
   extra_metadata?: Record<string, unknown>;
   metadata?: ItemMetadataInput | null;
+  reference_urls?: string[];
   translations: ItemTranslationInput[];
   tags?: ItemTagInput[];
   colors?: ItemColorInput[];

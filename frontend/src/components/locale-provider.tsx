@@ -38,7 +38,11 @@ const normalizeLocale = (value: string | null | undefined) => {
   return value.trim().toLowerCase();
 };
 
-const resolveInitialLocale = () => {
+const resolveInitialLocale = (initialLocale?: string) => {
+  const normalizedInitial = normalizeLocale(initialLocale);
+  if (normalizedInitial) {
+    return normalizedInitial;
+  }
   if (typeof window === "undefined") {
     return DEFAULT_LOCALE;
   }
@@ -48,8 +52,13 @@ const resolveInitialLocale = () => {
   return browser || DEFAULT_LOCALE;
 };
 
-export function LocaleProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState(resolveInitialLocale);
+type LocaleProviderProps = {
+  children: React.ReactNode;
+  initialLocale?: string | null;
+};
+
+export function LocaleProvider({ children, initialLocale }: LocaleProviderProps) {
+  const [locale, setLocaleState] = useState(() => resolveInitialLocale(initialLocale));
   const [supportedLocales, setSupportedLocales] = useState<string[]>([DEFAULT_LOCALE]);
 
   useEffect(() => {
@@ -79,6 +88,7 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
     setLocaleState(normalized);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(LOCALE_STORAGE_KEY, normalized);
+      document.cookie = `${LOCALE_STORAGE_KEY}=${normalized}; path=/; max-age=31536000`;
       document.documentElement.lang = normalized;
       document.documentElement.dir = RTL_LOCALES.has(normalized) ? "rtl" : "ltr";
     }
@@ -90,6 +100,21 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
       applyLocale(DEFAULT_LOCALE);
     }
   }, [applyLocale, locale, supportedLocales]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = normalizeLocale(window.localStorage.getItem(LOCALE_STORAGE_KEY));
+    if (stored && stored !== locale) {
+      applyLocale(stored);
+      return;
+    }
+    if (!stored && locale) {
+      window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+      document.cookie = `${LOCALE_STORAGE_KEY}=${locale}; path=/; max-age=31536000`;
+    }
+    document.documentElement.lang = locale || DEFAULT_LOCALE;
+    document.documentElement.dir = RTL_LOCALES.has(locale) ? "rtl" : "ltr";
+  }, [applyLocale, locale]);
 
   const translate = useCallback(
     (key: string, vars?: Record<string, string | number>) => {

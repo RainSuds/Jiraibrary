@@ -283,6 +283,7 @@ else:
 for _origin in (
     "https://jiraibrary.com",
     "https://main.d1mvuizi4i2c2s.amplifyapp.com",
+    "https://dev.d1mvuizi4i2c2s.amplifyapp.com",
 ):
     if _origin not in CORS_ALLOWED_ORIGINS:
         CORS_ALLOWED_ORIGINS.append(_origin)
@@ -291,6 +292,7 @@ CSRF_TRUSTED_ORIGINS = cast(list[str], env.list("CSRF_TRUSTED_ORIGINS"))
 for _origin in (
     "https://jiraibrary.com",
     "https://main.d1mvuizi4i2c2s.amplifyapp.com",
+    "https://dev.d1mvuizi4i2c2s.amplifyapp.com",
 ):
     if _origin not in CSRF_TRUSTED_ORIGINS:
         CSRF_TRUSTED_ORIGINS.append(_origin)

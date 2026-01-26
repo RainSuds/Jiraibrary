@@ -274,7 +274,8 @@ class ItemSubmissionAdmin(admin.ModelAdmin):
 
 
 admin.site.register(models.ItemMetadata)
-admin.site.register(models.ItemMeasurement)
+admin.site.register(models.MeasurementType)
+admin.site.register(models.VariantMeasurement)
 admin.site.register(models.ItemTag)
 admin.site.register(models.ItemColor)
 admin.site.register(models.ItemSubstyle)

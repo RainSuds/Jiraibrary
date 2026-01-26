@@ -12,6 +12,7 @@ import {
   CreateSubmissionPayload,
   type CollectionProposalPayload,
   createSubmission,
+  getItemDetail,
   getSubmissionDetail,
   listBrandSummaries,
   listCategories,
@@ -40,6 +41,7 @@ import {
   type FeatureSummary,
   type CollectionSummary,
   type CurrencySummary,
+  type ItemDetail,
   UploadedImageSummary,
   type ItemSubmissionPayload,
   saveSubmissionDraft,
@@ -298,6 +300,11 @@ function AddEntryPageContent() {
   const [pending, setPending] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const itemQuerySlug = searchParams?.get("item") ?? null;
+  const draftQueryId = searchParams?.get("draft") ?? null;
+  const submissionQueryId = searchParams?.get("submission") ?? null;
+  const itemPrefillApplied = useRef(false);
+  const submissionPrefillApplied = useRef(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [uploadedImages, setUploadedImages] = useState<UploadedImageSummary[]>([]);
@@ -358,6 +365,21 @@ function AddEntryPageContent() {
   const [newCollectionYear, setNewCollectionYear] = useState("");
   const [newCollectionNotes, setNewCollectionNotes] = useState("");
   const [previewSnapshot, setPreviewSnapshot] = useState<PreviewSnapshot | null>(null);
+
+  useEffect(() => {
+    if (!itemQuerySlug || draftQueryId) {
+      return;
+    }
+    setForm((prev) => {
+      if (prev.item_slug) {
+        return prev;
+      }
+      return {
+        ...prev,
+        item_slug: itemQuerySlug,
+      };
+    });
+  }, [draftQueryId, itemQuerySlug]);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [draftSaving, setDraftSaving] = useState(false);
   const [draftLoading, setDraftLoading] = useState(false);
@@ -393,7 +415,6 @@ function AddEntryPageContent() {
         { label: "Production country", value: previewSnapshot.productionCountry || "—" },
       ]
     : [];
-  const draftQueryId = searchParams?.get("draft") ?? null;
   const draftStatusMessage = useMemo(() => {
     if (!token) {
       return "Sign in to save drafts to your dashboard.";
@@ -1243,6 +1264,148 @@ function AddEntryPageContent() {
     [defaultLanguageCode]
   );
 
+  const mapItemToDraftData = useCallback(
+    (item: ItemDetail): DraftData => {
+      const normalizedTranslations = item.translations ?? [];
+      const fallbackLanguageCode =
+        normalizedTranslations[0]?.language?.toLowerCase() ?? defaultLanguageCode;
+
+      const normalizedNames: NameEntry[] = normalizedTranslations.map((entry) => ({
+        id: generateEntryId(),
+        language: entry.language?.toLowerCase() ?? fallbackLanguageCode,
+        value: entry.name ?? "",
+      }));
+
+      const normalizedDescriptions: DescriptionEntry[] = normalizedTranslations.map((entry) => ({
+        id: generateEntryId(),
+        language: entry.language?.toLowerCase() ?? fallbackLanguageCode,
+        value: entry.description ?? "",
+      }));
+
+      const fabricEntriesFromItem: FabricEntry[] = (item.fabrics ?? []).map((fabric) => ({
+        id: generateEntryId(),
+        fabric: fabric.id,
+        percentage: fabric.percentage ?? "",
+      }));
+
+      const priceEntriesFromItem: PriceEntry[] = (item.prices ?? []).map((price) => ({
+        id: generateEntryId(),
+        currency: price.currency ?? "",
+        amount: price.amount ?? "",
+      }));
+
+      const referenceLinkEntriesFromItem: ReferenceLinkEntry[] = (item.reference_urls ?? []).length
+        ? (item.reference_urls ?? []).map((value) => ({ id: generateEntryId(), value }))
+        : [{ id: generateEntryId(), value: "" }];
+
+      const sizeEntriesFromItem = (() => {
+        const measurements = item.variant_measurements ?? [];
+        if (measurements.length === 0) {
+          return [createEmptySizeEntry()];
+        }
+        const map = new Map<
+          string,
+          { measurements: SizeEntryMeasurements; activeFields: MeasurementFieldKey[] }
+        >();
+        measurements.forEach((entry) => {
+          const key = entry.measurement_type?.name as MeasurementFieldKey | undefined;
+          if (!key || !MEASUREMENT_LABEL_MAP[key]) {
+            return;
+          }
+          const label = entry.variant?.label ?? "Default";
+          const record = map.get(label) ?? { measurements: {}, activeFields: [] };
+          const value = entry.min_value ?? entry.max_value ?? "";
+          record.measurements[key] = value ? String(value) : "";
+          if (!record.activeFields.includes(key)) {
+            record.activeFields.push(key);
+          }
+          map.set(label, record);
+        });
+        if (map.size === 0) {
+          return [createEmptySizeEntry()];
+        }
+        return Array.from(map.entries()).map(([label, record]) => {
+          const normalizedLabel = label.toLowerCase();
+          const sizeCategory = normalizedLabel.includes("one") || normalizedLabel.includes("free") ? "one_size" : "alpha";
+          const activeFields = record.activeFields.length > 0
+            ? record.activeFields
+            : MEASUREMENT_FIELDS[0]?.key
+            ? [MEASUREMENT_FIELDS[0].key]
+            : [];
+          activeFields.forEach((field) => {
+            if (record.measurements[field] === undefined) {
+              record.measurements[field] = "";
+            }
+          });
+          return {
+            id: generateEntryId(),
+            sizeLabel: label,
+            sizeCategory,
+            unitSystem: "metric",
+            notes: "",
+            measurements: record.measurements,
+            activeFields,
+          };
+        });
+      })();
+
+      const categorySlug = item.category
+        ? categorySummaries.find((category) => category.name === item.category?.name)?.slug ?? null
+        : null;
+
+      const baseForm: CreateSubmissionPayload = {
+        ...initialForm,
+        title: normalizedNames[0]?.value ?? item.slug,
+        brand_name: item.brand?.name ?? "",
+        brand_slug: item.brand?.slug ?? undefined,
+        description: normalizedDescriptions[0]?.value ?? "",
+        tags: item.tags?.map((tag) => tag.name) ?? [],
+        item_slug: item.slug,
+      };
+
+      return {
+        form: baseForm,
+        selectedBrand: item.brand?.slug ?? null,
+        selectedTags: item.tags?.map((tag) => tag.id) ?? [],
+        nameEntries: normalizedNames.length > 0 ? normalizedNames : [{ id: generateEntryId(), language: fallbackLanguageCode, value: "" }],
+        descriptionEntries:
+          normalizedDescriptions.length > 0
+            ? normalizedDescriptions
+            : [{ id: generateEntryId(), language: fallbackLanguageCode, value: "" }],
+        releaseYear: item.release_year ? String(item.release_year) : "",
+        selectedCategory: categorySlug,
+        selectedSubcategory: item.subcategory?.slug ?? null,
+        selectedStyles: item.styles?.map((style) => style.slug) ?? [],
+        selectedSubstyles: item.substyles?.map((substyle) => substyle.slug) ?? [],
+        selectedColors: item.colors?.map((color) => color.id) ?? [],
+        fabricEntries:
+          fabricEntriesFromItem.length > 0
+            ? fabricEntriesFromItem
+            : [{ id: generateEntryId(), fabric: "", percentage: "" }],
+        selectedFeatures: item.features?.map((feature) => feature.id) ?? [],
+        selectedCollection: item.collections?.[0]?.id ?? null,
+        collectionMode: item.collections?.length ? "existing" : "existing",
+        newCollectionName: "",
+        newCollectionSeason: "",
+        newCollectionYear: "",
+        newCollectionNotes: "",
+        priceEntries:
+          priceEntriesFromItem.length > 0
+            ? priceEntriesFromItem
+            : [{ id: generateEntryId(), currency: "", amount: "" }],
+        originCountry: "",
+        productionCountry: "",
+        limitedEdition: Boolean(item.limited_edition),
+        hasMatchingSetFlag: Boolean(item.has_matching_set),
+        verifiedSource: Boolean(item.verified_source),
+        referenceLinks: referenceLinkEntriesFromItem,
+        sizeEntries: sizeEntriesFromItem,
+        uploadedImages: [],
+      };
+    },
+    [categorySummaries, defaultLanguageCode]
+  );
+
   const handleSaveDraft = useCallback(async () => {
     if (!token) {
       setErrorMessage("Sign in to save a draft.");
@@ -1299,6 +1462,67 @@ function AddEntryPageContent() {
       active = false;
     };
   }, [token, draftQueryId, applyDraftData, mapSubmissionToDraftData]);
+
+  useEffect(() => {
+    if (!token || !submissionQueryId || draftQueryId || submissionPrefillApplied.current) {
+      return;
+    }
+    let active = true;
+    setDraftLoading(true);
+    setDraftError(null);
+    (async () => {
+      try {
+        const submission = await getSubmissionDetail(token, submissionQueryId);
+        if (!active) {
+          return;
+        }
+        applyDraftData(mapSubmissionToDraftData(submission));
+        setDraftMeta(null);
+        submissionPrefillApplied.current = true;
+      } catch (prefillError) {
+        if (!active) {
+          return;
+        }
+        setDraftError(
+          prefillError instanceof Error ? prefillError.message : "Unable to load submission."
+        );
+      } finally {
+        if (active) {
+          setDraftLoading(false);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [token, submissionQueryId, draftQueryId, applyDraftData, mapSubmissionToDraftData]);
+
+  useEffect(() => {
+    if (!itemQuerySlug || draftQueryId || submissionQueryId || itemPrefillApplied.current) {
+      return;
+    }
+    let active = true;
+    (async () => {
+      try {
+        const item = await getItemDetail(itemQuerySlug, { language: defaultLanguageCode });
+        if (!active) {
+          return;
+        }
+        applyDraftData(mapItemToDraftData(item));
+        itemPrefillApplied.current = true;
+      } catch (prefillError) {
+        if (!active) {
+          return;
+        }
+        setErrorMessage(
+          prefillError instanceof Error ? prefillError.message : "Unable to load item details."
+        );
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [applyDraftData, defaultLanguageCode, draftQueryId, itemQuerySlug, mapItemToDraftData]);
 
   const handlePreviewOpen = useCallback(() => {
     setPreviewSnapshot(buildPreviewSnapshot());

@@ -27,6 +27,7 @@ class UserSerializer(serializers.ModelSerializer):
     website = serializers.SerializerMethodField()
     preferred_language = serializers.SerializerMethodField()
     preferred_currency = serializers.SerializerMethodField()
+    preferred_measurement_system = serializers.SerializerMethodField()
     auth_provider = serializers.SerializerMethodField()
 
     class Meta:
@@ -46,6 +47,7 @@ class UserSerializer(serializers.ModelSerializer):
             "website",
             "preferred_language",
             "preferred_currency",
+            "preferred_measurement_system",
             "share_owned_public",
             "share_wishlist_public",
             "auth_provider",
@@ -108,6 +110,12 @@ class UserSerializer(serializers.ModelSerializer):
         if not profile or not profile.preferred_currency:
             return None
         return profile.preferred_currency
+
+    def get_preferred_measurement_system(self, obj: models.User) -> str | None:
+        profile = getattr(obj, "profile", None)
+        if not profile or not profile.preferred_measurement_system:
+            return None
+        return profile.preferred_measurement_system
 
     def get_auth_provider(self, obj: models.User) -> str:
         profile = getattr(obj, "profile", None)
@@ -231,6 +239,7 @@ class PublicUserSerializer(serializers.ModelSerializer):
 class UserPreferenceSerializer(serializers.Serializer):
     preferred_language = serializers.CharField(max_length=10, required=False, allow_blank=True)
     preferred_currency = serializers.CharField(max_length=3, required=False, allow_blank=True)
+    preferred_measurement_system = serializers.CharField(max_length=8, required=False, allow_blank=True)
     share_owned_public = serializers.BooleanField(required=False)
     share_wishlist_public = serializers.BooleanField(required=False)
 
@@ -244,6 +253,12 @@ class UserPreferenceSerializer(serializers.Serializer):
         normalized = value.strip().upper()
         if normalized and not catalog_models.Currency.objects.filter(code__iexact=normalized).exists():
             raise serializers.ValidationError("Unknown currency code.")
+        return normalized
+
+    def validate_preferred_measurement_system(self, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized and normalized not in {"cm", "inch"}:
+            raise serializers.ValidationError("Preferred measurement system must be 'cm' or 'inch'.")
         return normalized
 
 

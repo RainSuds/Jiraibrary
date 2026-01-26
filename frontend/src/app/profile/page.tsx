@@ -7,13 +7,21 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { useFlash } from "@/components/flash-provider";
-import { type ItemReview, listMyReviews, uploadAvatar } from "@/lib/api";
+import { type ItemReview, type SubmissionSummary, listMyReviews, listMySubmissions, uploadAvatar } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/media";
 
 type ProfileTab = {
   id: string;
   label: string;
   description: string;
+};
+
+const SUBMISSION_STATUS_LABELS: Record<string, string> = {
+  draft: "Draft",
+  pending: "Pending",
+  under_review: "Under review",
+  approved: "Approved",
+  rejected: "Rejected",
 };
 
 function ProfilePageContent() {
@@ -45,6 +53,9 @@ function ProfilePageContent() {
   const [recentReviews, setRecentReviews] = useState<ItemReview[] | null>(null);
   const [recentReviewsLoading, setRecentReviewsLoading] = useState(false);
   const [recentReviewsError, setRecentReviewsError] = useState<string | null>(null);
+  const [submissionSummaries, setSubmissionSummaries] = useState<SubmissionSummary[] | null>(null);
+  const [submissionSummariesLoading, setSubmissionSummariesLoading] = useState(false);
+  const [submissionSummariesError, setSubmissionSummariesError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -105,6 +116,39 @@ function ProfilePageContent() {
       cancelled = true;
     };
   }, [token, user]);
+
+  useEffect(() => {
+    if (!token) {
+      setSubmissionSummaries(null);
+      return;
+    }
+    let active = true;
+    setSubmissionSummariesLoading(true);
+    setSubmissionSummariesError(null);
+    (async () => {
+      try {
+        const submissions = await listMySubmissions(token);
+        if (!active) {
+          return;
+        }
+        setSubmissionSummaries(submissions);
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+        setSubmissionSummariesError(
+          error instanceof Error ? error.message : "Unable to load submissions."
+        );
+      } finally {
+        if (active) {
+          setSubmissionSummariesLoading(false);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [token]);
 
   useEffect(() => {
     if (!copyFeedback) {
@@ -472,10 +516,75 @@ function ProfilePageContent() {
               >
                 Submit new item
               </Link>
+              <Link
+                href="/submissions"
+                className="rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:text-rose-900"
+              >
+                View submissions
+              </Link>
             </div>
-            <div className="rounded-3xl border border-dashed border-rose-200 bg-white/70 p-6 text-sm text-rose-500">
-              Drafts and approvals will display here once the submissions API is connected. Until then, keep sharing finds from the catalog.
-            </div>
+
+            {submissionSummariesLoading ? (
+              <div className="rounded-3xl border border-rose-100 bg-white/90 p-6 text-sm text-rose-500">
+                Loading submissions…
+              </div>
+            ) : submissionSummariesError ? (
+              <div className="rounded-3xl border border-rose-100 bg-rose-50/70 p-6 text-sm text-rose-700">
+                {submissionSummariesError}
+              </div>
+            ) : !submissionSummaries || submissionSummaries.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-rose-200 bg-white/70 p-6 text-sm text-rose-500">
+                Drafts, pending reviews, and approvals will appear here once you submit your first update.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {Object.entries(
+                    submissionSummaries.reduce<Record<string, number>>((counts, entry) => {
+                      const key = entry.status || "unknown";
+                      counts[key] = (counts[key] ?? 0) + 1;
+                      return counts;
+                    }, {})
+                  ).map(([status, count]) => (
+                    <div key={status} className="rounded-2xl border border-rose-100 bg-white/90 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-rose-400">
+                        {SUBMISSION_STATUS_LABELS[status] ?? status}
+                      </p>
+                      <p className="mt-2 text-2xl font-semibold text-rose-900">{count}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-3xl border border-rose-100 bg-white/95 p-5">
+                  <h4 className="text-sm font-semibold uppercase tracking-wide text-rose-400">Recent submissions</h4>
+                  <ul className="mt-3 space-y-3">
+                    {submissionSummaries.slice(0, 5).map((submission) => (
+                      <li key={submission.id} className="rounded-2xl border border-rose-100 bg-rose-50/60 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-rose-900">
+                              {submission.title || "Untitled entry"}
+                            </p>
+                            <p className="text-xs text-rose-500">
+                              {submission.brand_name || "Unknown brand"}
+                            </p>
+                          </div>
+                          <span className="rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-500">
+                            {SUBMISSION_STATUS_LABELS[submission.status] ?? submission.status}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-rose-400">
+                          <span>Updated {new Date(submission.updated_at).toLocaleDateString()}</span>
+                          {submission.item_slug ? (
+                            <span>• {submission.item_slug}</span>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
           </div>
         );
       case "profile":

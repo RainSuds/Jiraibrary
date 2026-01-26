@@ -386,9 +386,11 @@ class Item(TimeStampedUUIDModel):
     approved_at = models.DateTimeField(null=True, blank=True)
     extra_metadata = models.JSONField(default=dict, blank=True)
     product_number = models.CharField(max_length=64, blank=True)
+    reference_urls = models.JSONField(default=list, blank=True)
 
     tags = models.ManyToManyField(Tag, through="ItemTag", related_name="items", blank=True)
     colors = models.ManyToManyField(Color, through="ItemColor", related_name="items", blank=True)
+    styles = models.ManyToManyField(Style, related_name="items", blank=True)
     substyles = models.ManyToManyField(Substyle, through="ItemSubstyle", related_name="items", blank=True)
     fabrics = models.ManyToManyField(Fabric, through="ItemFabric", related_name="items", blank=True)
     features = models.ManyToManyField(Feature, through="ItemFeature", related_name="items", blank=True)
@@ -500,29 +502,35 @@ class ItemVariant(TimeStampedUUIDModel):
     def __str__(self) -> str:
         return f"{self.item} · {self.variant_label}"
 
-
-class ItemMeasurement(TimeStampedUUIDModel):
-    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="measurements")
-    variant = models.ForeignKey(
-        ItemVariant,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="measurements",
-    )
-    is_one_size = models.BooleanField(default=False)
-    bust_cm = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
-    waist_cm = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
-    hip_cm = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
-    length_cm = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
-    sleeve_length_cm = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
-    hem_cm = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
-    heel_height_cm = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
-    bag_depth_cm = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
-    fit_notes = models.TextField(blank=True)
+class MeasurementType(TimeStampedUUIDModel):
+    name = models.CharField(max_length=64, unique=True)
+    unit = models.CharField(max_length=16, default="cm")
+    applicable_categories = models.JSONField(default=list, blank=True)
 
     class Meta:
-        ordering = ["item__slug"]
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class VariantMeasurement(TimeStampedUUIDModel):
+    variant = models.ForeignKey(
+        ItemVariant,
+        on_delete=models.CASCADE,
+        related_name="measurements",
+    )
+    measurement_type = models.ForeignKey(
+        MeasurementType,
+        on_delete=models.PROTECT,
+        related_name="variant_measurements",
+    )
+    min_value = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    max_value = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        ordering = ["variant__item__slug", "measurement_type__name"]
+        unique_together = ("variant", "measurement_type")
 
 
 class ItemMetadata(TimeStampedUUIDModel):

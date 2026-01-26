@@ -10,23 +10,26 @@ import { deleteSubmissionDraft, listMySubmissions, type SubmissionSummary } from
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
   { value: "draft", label: "Drafts" },
-  { value: "pending_review", label: "Pending review" },
-  { value: "published", label: "Published" },
-  { value: "archived", label: "Archived" },
+  { value: "pending", label: "Pending" },
+  { value: "under_review", label: "Under review" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
 ];
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
-  pending_review: "Pending review",
-  published: "Published",
-  archived: "Archived",
+  pending: "Pending",
+  under_review: "Under review",
+  approved: "Approved",
+  rejected: "Rejected",
 };
 
 const STATUS_BADGE_CLASSES: Record<string, string> = {
   draft: "border-rose-200 text-rose-600",
-  pending_review: "border-amber-200 text-amber-600",
-  published: "border-emerald-200 text-emerald-700",
-  archived: "border-slate-200 text-slate-600",
+  pending: "border-amber-200 text-amber-600",
+  under_review: "border-amber-200 text-amber-600",
+  approved: "border-emerald-200 text-emerald-700",
+  rejected: "border-rose-200 text-rose-600",
 };
 
 export default function SubmissionsPage() {
@@ -263,6 +266,13 @@ export default function SubmissionsPage() {
                             {pendingDeleteIds[submission.id] ? "Deleting…" : "Delete draft"}
                           </button>
                         </>
+                      ) : submission.status === "rejected" ? (
+                        <Link
+                          href={`/add-entry?submission=${submission.id}`}
+                          className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+                        >
+                          Edit & resubmit
+                        </Link>
                       ) : null}
                     </div>
                   </div>

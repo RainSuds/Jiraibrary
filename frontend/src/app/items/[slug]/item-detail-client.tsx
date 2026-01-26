@@ -7,8 +7,12 @@ import type { FormEvent, MouseEvent } from "react";
 
 import FavoriteToggle from "@/components/favorite-toggle";
 import ItemGallery from "@/components/item-gallery";
+import ColorSwatch from "@/components/color-swatch";
 import { useAuth } from "@/components/auth-provider";
+import { useCurrency } from "@/components/currency-provider";
 import { useFlash } from "@/components/flash-provider";
+import { useLocale } from "@/components/locale-provider";
+import { useMeasurementUnit } from "@/components/measurement-unit-provider";
 import {
   ImageDetail,
   ItemDetail as ItemDetailPayload,
@@ -29,12 +33,17 @@ import { useCurrencyOptions } from "@/lib/useCurrencyOptions";
 
 const PLACEHOLDER_IMAGE_URL = "https://placehold.co/600x800?text=Jiraibrary";
 
-function buildSearchUrl(params: Record<string, string | undefined>): string {
+function buildSearchUrl(params: Record<string, string | string[] | undefined>): string {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
-    if (value) {
-      search.set(key, value);
+    if (!value) {
+      return;
     }
+    if (Array.isArray(value)) {
+      value.filter(Boolean).forEach((entry) => search.append(key, entry));
+      return;
+    }
+    search.set(key, value);
   });
   const query = search.toString();
   return query ? `/search?${query}` : "/search";
@@ -120,6 +129,72 @@ function formatPriceSummary(price: PriceSummary | null | undefined): string | nu
   }
 }
 
+function convertMeasurement(value: number, fromUnit: string, toUnit: string): number {
+  const normalizedFrom = fromUnit.toLowerCase();
+  const normalizedTo = toUnit.toLowerCase();
+  if (normalizedFrom === normalizedTo) {
+    return value;
+  }
+  if (normalizedFrom === "cm" && (normalizedTo === "inch" || normalizedTo === "in")) {
+    return value / 2.54;
+  }
+  if ((normalizedFrom === "inch" || normalizedFrom === "in") && normalizedTo === "cm") {
+    return value * 2.54;
+  }
+  return value;
+}
+
+function formatConvertedNumber(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? rounded.toString() : rounded.toFixed(1);
+}
+
+function formatMeasurementNumber(
+  value: string | null | undefined,
+  fromUnit: string,
+  toUnit: string,
+): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const trimmed = String(value).trim();
+  if (!trimmed) {
+    return null;
+  }
+  const numeric = Number(trimmed);
+  if (Number.isNaN(numeric)) {
+    return trimmed;
+  }
+  const converted = convertMeasurement(numeric, fromUnit, toUnit);
+  return formatConvertedNumber(converted);
+}
+
+function formatMeasurementRange(
+  minValue: string | null | undefined,
+  maxValue: string | null | undefined,
+  fromUnit: string,
+  toUnit: string,
+): string {
+  const min = formatMeasurementNumber(minValue, fromUnit, toUnit);
+  const max = formatMeasurementNumber(maxValue, fromUnit, toUnit);
+  if (min && max) {
+    return min === max ? min : `${min}–${max}`;
+  }
+  return min ?? max ?? "—";
+}
+
+function resolveDisplayUnit(fromUnit: string | undefined, preferredUnit: string): string | undefined {
+  if (!fromUnit) return undefined;
+  const normalized = fromUnit.toLowerCase();
+  if (normalized === "cm" && preferredUnit === "inch") {
+    return "in";
+  }
+  if ((normalized === "inch" || normalized === "in") && preferredUnit === "cm") {
+    return "cm";
+  }
+  return fromUnit;
+}
+
 function selectPrice(prices: ItemPriceDetail[], preferredCurrency: string): ItemPriceDetail | null {
   if (!prices || prices.length === 0) {
     return null;
@@ -189,9 +264,12 @@ type ItemDetailClientProps = {
 
 export default function ItemDetailClient({ item }: ItemDetailClientProps) {
   const { user, token } = useAuth();
+  const { locale } = useLocale();
+  const { currency } = useCurrency();
+  const { unit: measurementUnit } = useMeasurementUnit();
   const flash = useFlash();
-  const preferredLanguage = (user?.preferred_language ?? "en").toLowerCase();
-  const preferredCurrency = (user?.preferred_currency ?? "USD").toUpperCase();
+  const preferredLanguage = (user?.preferred_language ?? locale ?? "en").toLowerCase();
+  const preferredCurrency = (user?.preferred_currency ?? currency ?? "USD").toUpperCase();
   const isAuthenticated = Boolean(user && token);
   const [wardrobeEntry, setWardrobeEntry] = useState<WardrobeEntry | null>(null);
   const [wardrobeLoading, setWardrobeLoading] = useState(false);
@@ -205,6 +283,91 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
   const visibleTranslations = useMemo(() => filterTranslations(item, preferredLanguage), [item, preferredLanguage]);
   const primaryPriceEntry = useMemo(() => selectPrice(item.prices, preferredCurrency), [item.prices, preferredCurrency]);
   const primaryPrice = formatPrice(primaryPriceEntry);
+  const sizeChart = useMemo(() => {
+    const measurements = item.variant_measurements ?? [];
+    if (measurements.length === 0) {
+      return null;
+    }
+    const measurementOrder: string[] = [];
+    const unitByName = new Map<string, string>();
+    const variantMap = new Map<string, { label: string; sizeDescriptor: string }>();
+    const values = new Map<string, Map<string, { min: string | null; max: string | null }>>();
+
+    measurements.forEach((entry) => {
+      const variantLabel = entry.variant?.label || "Default";
+      const sizeDescriptor = entry.variant?.size_descriptor || variantLabel;
+      if (!variantMap.has(variantLabel)) {
+        variantMap.set(variantLabel, { label: variantLabel, sizeDescriptor });
+      }
+      const typeName = entry.measurement_type?.name || "measurement";
+      if (!measurementOrder.includes(typeName)) {
+        measurementOrder.push(typeName);
+      }
+      if (entry.measurement_type?.unit) {
+        unitByName.set(typeName, entry.measurement_type.unit);
+      }
+      if (!values.has(variantLabel)) {
+        values.set(variantLabel, new Map());
+      }
+      values.get(variantLabel)?.set(typeName, {
+        min: entry.min_value,
+        max: entry.max_value,
+      });
+    });
+
+    const sizePriority = [
+      "bust",
+      "waist",
+      "hip",
+      "length",
+      "shoulder",
+      "sleeve_length",
+      "skirt_length",
+      "cuff",
+    ];
+
+    const variants = Array.from(variantMap.values());
+    const sortedVariants = [...variants].sort((a, b) => {
+      const aValues = values.get(a.label);
+      const bValues = values.get(b.label);
+
+      const findKey = (map?: Map<string, { min: string | null; max: string | null }>) => {
+        if (!map) return null;
+        return sizePriority.find((key) => map.has(key)) ?? null;
+      };
+
+      const readMin = (map: Map<string, { min: string | null; max: string | null }> | undefined, key: string | null) => {
+        if (!map || !key) return Number.NaN;
+        const entry = map.get(key);
+        if (!entry) return Number.NaN;
+        const min = Number(entry.min ?? entry.max ?? "");
+        return Number.isNaN(min) ? Number.NaN : min;
+      };
+
+      const aKey = findKey(aValues);
+      const bKey = findKey(bValues);
+      const aMin = readMin(aValues, aKey);
+      const bMin = readMin(bValues, bKey);
+
+      if (!Number.isNaN(aMin) && !Number.isNaN(bMin) && aMin !== bMin) {
+        return aMin - bMin;
+      }
+      if (!Number.isNaN(aMin) && Number.isNaN(bMin)) {
+        return -1;
+      }
+      if (Number.isNaN(aMin) && !Number.isNaN(bMin)) {
+        return 1;
+      }
+      return a.sizeDescriptor.localeCompare(b.sizeDescriptor);
+    });
+
+    return {
+      measurementOrder,
+      unitByName,
+      variants: sortedVariants,
+      values,
+    };
+  }, [item.variant_measurements]);
   const galleryImages: ImageDetail[] = item.gallery ?? [];
   const orderedPrices = useMemo(() => {
     if (!primaryPriceEntry) {
@@ -214,6 +377,11 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
   }, [item.prices, primaryPriceEntry]);
   const styleFamilies = useMemo(() => {
     const map = new Map<string, { slug: string; name: string }>();
+    item.styles.forEach((style) => {
+      if (!map.has(style.slug)) {
+        map.set(style.slug, { slug: style.slug, name: style.name });
+      }
+    });
     item.substyles.forEach((substyle) => {
       if (substyle.style && !map.has(substyle.style.slug)) {
         map.set(substyle.style.slug, {
@@ -223,7 +391,11 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
       }
     });
     return Array.from(map.values());
-  }, [item.substyles]);
+  }, [item.styles, item.substyles]);
+  const referenceUrls = useMemo(
+    () => (item.reference_urls ?? []).filter((entry) => entry && entry.trim().length > 0),
+    [item.reference_urls]
+  );
   const primaryCollectionId = item.collections[0]?.id ?? null;
   const brandSlug = item.brand?.slug ?? null;
   const subcategoryId = item.subcategory?.id ?? null;
@@ -270,10 +442,12 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
     async function loadRelatedItems() {
       setRelatedLoading(true);
       try {
-        const response = await getItemList({
-          [param]: value,
-          page_size: "12",
-        });
+          const response = await getItemList({
+            [param]: value,
+            page_size: "12",
+            language: preferredLanguage,
+            currency: preferredCurrency,
+          });
         if (cancelled) {
           return;
         }
@@ -294,7 +468,7 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
     return () => {
       cancelled = true;
     };
-  }, [item.slug, relatedSeed]);
+  }, [item.slug, relatedSeed, preferredCurrency, preferredLanguage]);
 
     useEffect(() => {
       let cancelled = false;
@@ -484,8 +658,9 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
   const editorName =
     getMetadataText(item.extra_metadata, "editor") ?? getMetadataText(item.extra_metadata, "last_editor");
   const releaseLabel = (() => {
-    if (item.release_year) {
-      return String(item.release_year);
+    const releaseYearValue = item.release_year ? String(item.release_year) : null;
+    if (releaseYearValue) {
+      return releaseYearValue;
     }
     if (!item.release_date) {
       return null;
@@ -496,6 +671,7 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
       return item.release_date;
     }
   })();
+  const releaseYearValue = item.release_year ? String(item.release_year) : null;
 
   const contributorRows = [
     {
@@ -732,11 +908,6 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
 
   return (
     <div className="flex flex-col gap-10">
-      {!isAuthenticated ? (
-        <div className="rounded-3xl border border-rose-100 bg-white/80 px-6 py-4 text-sm text-rose-600">
-          You are not logged in. <Link href="/login" className="font-semibold text-rose-700 underline">Log in</Link> to save this item to your wardrobe.
-        </div>
-      ) : null}
       <nav className="flex flex-wrap items-center gap-2 text-sm text-rose-500">
         <Link href="/" className="transition hover:text-rose-800">
           Home
@@ -803,20 +974,6 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
         <article className="flex flex-col gap-8">
           <ItemGallery images={galleryImages} alt={displayName} placeholderUrl={PLACEHOLDER_IMAGE_URL} />
 
-          {extraMetadataEntries.length > 0 ? (
-            <div className="flex flex-col gap-4">
-              <h2 className="text-lg font-semibold text-rose-900">Extra metadata</h2>
-              <dl className="grid gap-3 sm:grid-cols-2">
-                {extraMetadataEntries.map(([key, value]) => (
-                  <div key={key} className="rounded-xl border border-rose-100 bg-white/90 p-4">
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-rose-400">{titleCase(key)}</dt>
-                    <dd className="mt-1 text-sm text-slate-700">{String(value)}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          ) : null}
-
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-rose-100 bg-white/90 p-4 shadow-sm">
@@ -842,6 +999,12 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
                   </Link>
                 )}
                 <FavoriteToggle itemSlug={item.slug} />
+                <Link
+                  href={`/add-entry?item=${encodeURIComponent(item.slug)}`}
+                  className="rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-rose-600 transition hover:border-rose-300 hover:text-rose-800"
+                >
+                  Submit edit
+                </Link>
               </div>
               {wardrobeError ? <p className="text-xs text-rose-500">{wardrobeError}</p> : null}
             </div>
@@ -859,7 +1022,9 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
                         <span className="text-xs uppercase tracking-wide text-rose-400">{translation.language}</span>
                       </div>
                       {translation.description ? (
-                        <p className="mt-2 text-sm text-rose-500">{translation.description}</p>
+                        <p className="mt-2 whitespace-pre-line text-sm text-rose-500">
+                          {translation.description}
+                        </p>
                       ) : null}
                     </li>
                   ))}
@@ -867,6 +1032,79 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
               </div>
             ) : null}
           </div>
+
+          {sizeChart ? (
+            <div className="flex flex-col gap-4">
+              <h2 className="text-lg font-semibold text-rose-900">Size chart</h2>
+              <div className="overflow-x-auto rounded-2xl border border-rose-100 bg-white/95 shadow-sm">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-rose-50 text-rose-500">
+                    <tr>
+                      <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">Size</th>
+                      {sizeChart.measurementOrder.map((name) => {
+                        const baseUnit = sizeChart.unitByName.get(name);
+                        const displayUnit = resolveDisplayUnit(baseUnit, measurementUnit);
+                        return (
+                          <th
+                            key={`size-header-${name}`}
+                            className="px-4 py-3 text-xs font-semibold uppercase tracking-wide"
+                          >
+                            {`${titleCase(name)}${displayUnit ? ` (${displayUnit})` : ""}`}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-rose-100 text-slate-700">
+                    {sizeChart.variants.map((variant) => (
+                      <tr key={`size-row-${variant.label}`}>
+                        <td className="px-4 py-3 text-sm font-semibold text-rose-900">
+                          {variant.sizeDescriptor || variant.label}
+                        </td>
+                        {sizeChart.measurementOrder.map((name) => {
+                          const measurement = sizeChart.values.get(variant.label)?.get(name);
+                          const baseUnit = sizeChart.unitByName.get(name) ?? "cm";
+                          return (
+                            <td key={`size-${variant.label}-${name}`} className="px-4 py-3 text-sm text-slate-600">
+                              {formatMeasurementRange(
+                                measurement?.min,
+                                measurement?.max,
+                                baseUnit,
+                                measurementUnit,
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
+          {referenceUrls.length > 0 ? (
+            <div className="flex flex-col gap-3">
+              <h2 className="text-lg font-semibold text-rose-900">Reference links</h2>
+              <div className="rounded-2xl border border-rose-100 bg-white/90 p-4 shadow-sm">
+                <ul className="flex flex-col gap-2 text-sm">
+                  {referenceUrls.map((url) => (
+                    <li key={url} className="flex items-start gap-2">
+                      <span className="mt-1 inline-flex h-2 w-2 shrink-0 rounded-full bg-rose-300" aria-hidden="true" />
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="break-all text-rose-600 underline decoration-rose-200 underline-offset-2 transition hover:text-rose-800"
+                      >
+                        {url}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : null}
 
           {relatedItems.length > 0 || relatedLoading ? (
             <div className="flex flex-col gap-4">
@@ -1139,19 +1377,65 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
             <div className="rounded-2xl border border-rose-100 bg-white/90 p-5 shadow-sm">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-rose-500">Colorway</h2>
               <div className="mt-3 flex flex-wrap gap-3">
-                {item.colors.map((color) => (
-                  <Link
-                    key={color.id}
-                    href={buildSearchUrl({ color: color.id })}
-                    className="flex items-center gap-2 rounded-full border border-rose-200 px-3 py-1 text-xs text-rose-600 transition hover:border-rose-300 hover:text-rose-800"
-                  >
-                    <span
-                      className="h-3 w-3 rounded-full border border-rose-200/70"
-                      style={{ backgroundColor: color.hex ?? "#d4d4d8" }}
-                    />
-                    {color.name}
-                  </Link>
-                ))}
+                {(() => {
+                  const colorAliases = item.extra_metadata?.color_aliases as Record<string, string> | undefined;
+                  const colorwayEntries = item.extra_metadata?.colorways as
+                    | { label?: string; colors?: string[] }
+                    | Array<{ label?: string; colors?: string[] }>;
+
+                  const resolvedColorways = Array.isArray(colorwayEntries)
+                    ? colorwayEntries
+                    : colorwayEntries
+                      ? [colorwayEntries]
+                      : [];
+
+                  if (resolvedColorways.length > 0) {
+                    return resolvedColorways
+                      .map((entry, index) => {
+                        const tokens = (entry.colors ?? [])
+                          .map((value) => value?.toLowerCase?.())
+                          .filter((value): value is string => Boolean(value));
+                        const matchedColors = tokens
+                          .map((token) =>
+                            item.colors.find((color) => color.name.toLowerCase() === token)
+                          )
+                          .filter((color): color is ItemDetailPayload["colors"][number] => Boolean(color));
+                        if (matchedColors.length === 0) {
+                          return null;
+                        }
+                        const displayName =
+                          entry.label || matchedColors.map((color) => color.name).join(" × ");
+                        return (
+                          <Link
+                            key={`colorway-${index}`}
+                            href={buildSearchUrl({
+                              color: matchedColors.map((color) => color.id),
+                            })}
+                            className="flex items-center gap-2 rounded-full border border-rose-200 px-3 py-1 text-xs text-rose-600 transition hover:border-rose-300 hover:text-rose-800"
+                          >
+                            <ColorSwatch colors={matchedColors} />
+                            {displayName}
+                          </Link>
+                        );
+                      })
+                      .filter(Boolean);
+                  }
+
+                  return item.colors.map((color) => {
+                    const aliasKey = color.name?.toLowerCase?.() ?? "";
+                    const displayName = colorAliases?.[aliasKey] ?? color.name;
+                    return (
+                      <Link
+                        key={color.id}
+                        href={buildSearchUrl({ color: color.id })}
+                        className="flex items-center gap-2 rounded-full border border-rose-200 px-3 py-1 text-xs text-rose-600 transition hover:border-rose-300 hover:text-rose-800"
+                      >
+                        <ColorSwatch colors={[color]} />
+                        {displayName}
+                      </Link>
+                    );
+                  });
+                })()}
               </div>
             </div>
           ) : null}
@@ -1161,7 +1445,20 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
             <dl className="mt-4 space-y-4">
               <div className="flex flex-col gap-1">
                 <dt className="text-[11px] font-semibold uppercase tracking-wide text-rose-400">Release year</dt>
-                <dd className="text-sm text-slate-700">{releaseLabel ?? "—"}</dd>
+                <dd>
+                  {releaseYearValue ? (
+                    <Link
+                      href={buildSearchUrl({
+                        release_year_range: `${releaseYearValue}:${releaseYearValue}`,
+                      })}
+                      className="inline-flex rounded-full bg-rose-50 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-100 hover:text-rose-900"
+                    >
+                      {releaseLabel}
+                    </Link>
+                  ) : (
+                    <span className="text-sm text-slate-400">{releaseLabel ?? "—"}</span>
+                  )}
+                </dd>
               </div>
               <div className="flex flex-col gap-1">
                 <dt className="text-[11px] font-semibold uppercase tracking-wide text-rose-400">Collections</dt>
@@ -1186,11 +1483,33 @@ export default function ItemDetailClient({ item }: ItemDetailClientProps) {
               </div>
               <div className="flex flex-col gap-1">
                 <dt className="text-[11px] font-semibold uppercase tracking-wide text-rose-400">Season</dt>
-                <dd className="text-sm text-slate-700">{metadataSeason ?? "—"}</dd>
+                <dd>
+                  {metadataSeason ? (
+                    <Link
+                      href={buildSearchUrl({ season: metadataSeason })}
+                      className="inline-flex rounded-full bg-rose-50 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-100 hover:text-rose-900"
+                    >
+                      {metadataSeason}
+                    </Link>
+                  ) : (
+                    <span className="text-sm text-slate-400">—</span>
+                  )}
+                </dd>
               </div>
               <div className="flex flex-col gap-1">
                 <dt className="text-[11px] font-semibold uppercase tracking-wide text-rose-400">Fit</dt>
-                <dd className="text-sm text-slate-700">{metadataFit ?? "—"}</dd>
+                <dd>
+                  {metadataFit ? (
+                    <Link
+                      href={buildSearchUrl({ fit: metadataFit })}
+                      className="inline-flex rounded-full bg-rose-50 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-100 hover:text-rose-900"
+                    >
+                      {metadataFit}
+                    </Link>
+                  ) : (
+                    <span className="text-sm text-slate-400">—</span>
+                  )}
+                </dd>
               </div>
             </dl>
           </div>

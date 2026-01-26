@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -7,6 +8,7 @@ import ClientProviders from "@/components/client-providers";
 import { CurrencyProvider } from "@/components/currency-provider";
 import { FlashProvider } from "@/components/flash-provider";
 import { LocaleProvider } from "@/components/locale-provider";
+import { MeasurementUnitProvider } from "@/components/measurement-unit-provider";
 import NavigationBar from "@/components/navigation-bar";
 
 const geistSans = Geist({
@@ -25,11 +27,15 @@ export const metadata: Metadata = {
     "Discover Jirai Kei fashion items, search by brand or tag, and explore detailed references.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const initialLocale = cookieStore.get("jiraibrary.guest.language")?.value ?? null;
+  const initialCurrency = cookieStore.get("jiraibrary.guest.currency")?.value ?? null;
+  const initialMeasurement = cookieStore.get("jiraibrary.guest.measurement")?.value ?? null;
   return (
     <html lang="en">
       <body
@@ -38,18 +44,20 @@ export default function RootLayout({
         <ClientProviders>
           <FlashProvider>
             <AuthProvider>
-              <LocaleProvider>
-                <CurrencyProvider>
-                  <div className="flex min-h-screen flex-col">
-                    <NavigationBar />
-                    <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">{children}</main>
-                    <footer className="border-t border-rose-100/80 bg-white/75">
-                      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4 text-sm text-rose-500">
-                        <span>© {new Date().getFullYear()} Jiraibrary.</span>
-                        <span>Curating Jirai Kei fashion references.</span>
-                      </div>
-                    </footer>
-                  </div>
+              <LocaleProvider initialLocale={initialLocale}>
+                <CurrencyProvider initialCurrency={initialCurrency}>
+                  <MeasurementUnitProvider initialUnit={initialMeasurement}>
+                    <div className="flex min-h-screen flex-col">
+                      <NavigationBar />
+                      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">{children}</main>
+                      <footer className="border-t border-rose-100/80 bg-white/75">
+                        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4 text-sm text-rose-500">
+                          <span>© {new Date().getFullYear()} Jiraibrary.</span>
+                          <span>Curating Jirai Kei fashion references.</span>
+                        </div>
+                      </footer>
+                    </div>
+                  </MeasurementUnitProvider>
                 </CurrencyProvider>
               </LocaleProvider>
             </AuthProvider>

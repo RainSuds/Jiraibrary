@@ -7,6 +7,7 @@ from uuid import UUID
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Max, Min, Prefetch, Q, QuerySet
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, mixins, permissions, status, viewsets
@@ -206,6 +207,7 @@ class ItemViewSet(viewsets.ModelViewSet):
         )
         .prefetch_related(
             "tags",
+            "styles",
             "substyles",
             "fabrics",
             "features",
@@ -356,11 +358,42 @@ class ItemViewSet(viewsets.ModelViewSet):
                 }
             )
 
+        measurement_ranges: list[dict[str, Any]] = []
+        for raw_range in request.query_params.getlist("measurement_range"):
+            if raw_range is None:
+                continue
+            parts = raw_range.split(":")
+            if not parts:
+                continue
+            name_part = (parts[0] or "").strip().lower()
+            if not name_part:
+                continue
+            min_part = parts[1] if len(parts) >= 2 else ""
+            max_part = parts[2] if len(parts) >= 3 else ""
+            min_value = parse_float(min_part)
+            max_value = parse_float(max_part)
+            if min_value is None and max_value is None:
+                continue
+            value_key = f"{name_part}:{min_part}:{max_part}"
+            measurement_ranges.append(
+                {
+                    "name": name_part,
+                    "min": min_value,
+                    "max": max_value,
+                    "value_key": value_key,
+                }
+            )
+
+        requested_price_currency = normalize(request.query_params.get("price_currency"))
         currency_setting = getattr(settings, "PREFERRED_CURRENCY_CODE", None)
         price_currency = (
-            currency_setting
-            if isinstance(currency_setting, str) and currency_setting
-            else "USD"
+            requested_price_currency
+            if requested_price_currency
+            else (
+                currency_setting
+                if isinstance(currency_setting, str) and currency_setting
+                else "USD"
+            )
         )
         price_ranges: list[dict[str, float | str | None]] = []
         for raw in request.query_params.getlist("price_range"):
@@ -403,6 +436,8 @@ class ItemViewSet(viewsets.ModelViewSet):
             "collection": normalize_list("collection"),
             "fabric": normalize_list("fabric"),
             "feature": normalize_list("feature"),
+            "season": normalize(request.query_params.get("season")),
+            "fit": normalize(request.query_params.get("fit")),
             "measurement": {
                 "bust_min": normalize_number("measurement_bust_min"),
                 "bust_max": normalize_number("measurement_bust_max"),
@@ -413,6 +448,7 @@ class ItemViewSet(viewsets.ModelViewSet):
                 "length_min": normalize_number("measurement_length_min"),
                 "length_max": normalize_number("measurement_length_max"),
             },
+            "measurement_ranges": measurement_ranges,
             "release_year_ranges": release_year_ranges,
             "price_currency": price_currency,
             "price_ranges": price_ranges,
@@ -423,7 +459,6 @@ class ItemViewSet(viewsets.ModelViewSet):
         style_published_filter = Q(
             substyles__items__status=models.Item.ItemStatus.PUBLISHED
         )
-        measurement_filter = Q(item__status=models.Item.ItemStatus.PUBLISHED)
 
         selected_brand_slugs = set(cast(list[str], selected.get("brand") or []))
         selected_category_ids = set(cast(list[str], selected.get("category") or []))
@@ -534,11 +569,18 @@ class ItemViewSet(viewsets.ModelViewSet):
 
         style_queryset = (
             models.Style.objects.annotate(
-                item_count=Count(
+                substyle_item_count=Count(
                     "substyles__items", filter=style_published_filter, distinct=True
-                )
+                ),
+                direct_item_count=Count(
+                    "items", filter=published_filter, distinct=True
+                ),
             )
-            .filter(Q(item_count__gt=0) | Q(slug__in=selected_style_slugs))
+            .filter(
+                Q(substyle_item_count__gt=0)
+                | Q(direct_item_count__gt=0)
+                | Q(slug__in=selected_style_slugs)
+            )
             .order_by("name")
         )
         style_options = []
@@ -547,12 +589,14 @@ class ItemViewSet(viewsets.ModelViewSet):
             style_selected = style.slug in selected_style_slugs or any(
                 sub_option["selected"] for sub_option in substyles
             )
+            direct_count = int(getattr(style, "direct_item_count", 0) or 0)
+            substyle_count = int(getattr(style, "substyle_item_count", 0) or 0)
             style_options.append(
                 {
                     "slug": style.slug,
                     "name": style.name,
                     "selected": style_selected,
-                    "item_count": int(getattr(style, "item_count", 0) or 0),
+                    "item_count": direct_count + substyle_count,
                     "substyles": substyles,
                 }
             )
@@ -648,16 +692,21 @@ class ItemViewSet(viewsets.ModelViewSet):
             for feature in feature_queryset[:48]
         ]
 
-        measurement_ranges = models.ItemMeasurement.objects.aggregate(
-            bust_min=Min("bust_cm", filter=measurement_filter),
-            bust_max=Max("bust_cm", filter=measurement_filter),
-            waist_min=Min("waist_cm", filter=measurement_filter),
-            waist_max=Max("waist_cm", filter=measurement_filter),
-            hip_min=Min("hip_cm", filter=measurement_filter),
-            hip_max=Max("hip_cm", filter=measurement_filter),
-            length_min=Min("length_cm", filter=measurement_filter),
-            length_max=Max("length_cm", filter=measurement_filter),
-        )
+        def measurement_bounds(name: str) -> dict[str, float | None]:
+            base = models.VariantMeasurement.objects.filter(
+                variant__item__status=models.Item.ItemStatus.PUBLISHED,
+                measurement_type__name__iexact=name,
+            )
+            aggregates = base.aggregate(
+                min_measurement=Min(Coalesce("min_value", "max_value")),
+                max_measurement=Max(Coalesce("max_value", "min_value")),
+            )
+            return {
+                "min_value": aggregates.get("min_measurement"),
+                "max_value": aggregates.get("max_measurement"),
+            }
+
+        measurement_types = list(models.MeasurementType.objects.order_by("name"))
 
         release_year_ranges = models.Item.objects.filter(
             status=models.Item.ItemStatus.PUBLISHED,
@@ -667,12 +716,19 @@ class ItemViewSet(viewsets.ModelViewSet):
             max_year=Max("release_year"),
         )
 
-        currency_setting = getattr(settings, "PREFERRED_CURRENCY_CODE", None)
+        requested_currency = selected.get("price_currency")
         preferred_currency = (
-            currency_setting
-            if isinstance(currency_setting, str) and currency_setting
+            requested_currency
+            if isinstance(requested_currency, str) and requested_currency
             else None
         )
+        if not preferred_currency:
+            currency_setting = getattr(settings, "PREFERRED_CURRENCY_CODE", None)
+            preferred_currency = (
+                currency_setting
+                if isinstance(currency_setting, str) and currency_setting
+                else None
+            )
         price_stats: dict[str, Any] | None = None
         if preferred_currency:
             price_stats = (
@@ -685,10 +741,13 @@ class ItemViewSet(viewsets.ModelViewSet):
                 )
             )
         if (
-            not price_stats
-            or (
-                price_stats.get("min_amount") is None
-                and price_stats.get("max_amount") is None
+            not preferred_currency
+            and (
+                not price_stats
+                or (
+                    price_stats.get("min_amount") is None
+                    and price_stats.get("max_amount") is None
+                )
             )
         ):
             fallback_currency = (
@@ -714,36 +773,19 @@ class ItemViewSet(viewsets.ModelViewSet):
 
         preferred_currency = preferred_currency or "USD"
 
-        measurement_options = [
-            {
-                "field": "bust_cm",
-                "label": "Bust",
-                "unit": "cm",
-                "min": float(measurement_ranges["bust_min"]) if measurement_ranges.get("bust_min") is not None else None,
-                "max": float(measurement_ranges["bust_max"]) if measurement_ranges.get("bust_max") is not None else None,
-            },
-            {
-                "field": "waist_cm",
-                "label": "Waist",
-                "unit": "cm",
-                "min": float(measurement_ranges["waist_min"]) if measurement_ranges.get("waist_min") is not None else None,
-                "max": float(measurement_ranges["waist_max"]) if measurement_ranges.get("waist_max") is not None else None,
-            },
-            {
-                "field": "hip_cm",
-                "label": "Hip",
-                "unit": "cm",
-                "min": float(measurement_ranges["hip_min"]) if measurement_ranges.get("hip_min") is not None else None,
-                "max": float(measurement_ranges["hip_max"]) if measurement_ranges.get("hip_max") is not None else None,
-            },
-            {
-                "field": "length_cm",
-                "label": "Length",
-                "unit": "cm",
-                "min": float(measurement_ranges["length_min"]) if measurement_ranges.get("length_min") is not None else None,
-                "max": float(measurement_ranges["length_max"]) if measurement_ranges.get("length_max") is not None else None,
-            },
-        ]
+        measurement_options = []
+        for measurement_type in measurement_types:
+            name = measurement_type.name
+            bounds = measurement_bounds(name)
+            measurement_options.append(
+                {
+                    "field": f"{name}_cm",
+                    "label": name.replace("_", " ").title(),
+                    "unit": measurement_type.unit,
+                    "min": float(bounds["min_value"]) if bounds["min_value"] is not None else None,
+                    "max": float(bounds["max_value"]) if bounds["max_value"] is not None else None,
+                }
+            )
 
         return {
             "brands": brand_options,
@@ -906,6 +948,28 @@ class ItemViewSet(viewsets.ModelViewSet):
                     }
                 )
 
+        season_value = selected.get("season")
+        if isinstance(season_value, str) and season_value:
+            active.append(
+                {
+                    "label": "Season",
+                    "value": season_value,
+                    "param": "season",
+                    "value_key": season_value,
+                }
+            )
+
+        fit_value = selected.get("fit")
+        if isinstance(fit_value, str) and fit_value:
+            active.append(
+                {
+                    "label": "Fit",
+                    "value": fit_value,
+                    "param": "fit",
+                    "value_key": fit_value,
+                }
+            )
+
         measurement = cast(dict[str, float | None], selected.get("measurement") or {})
         measurement_labels = {
             "bust_min": ("Bust", "measurement_bust_min", "≥"),
@@ -928,6 +992,39 @@ class ItemViewSet(viewsets.ModelViewSet):
                     "value": f"{comparator} {value_str} cm",
                     "param": param_name,
                     "value_key": value_str,
+                }
+            )
+
+        measurement_range_labels = {
+            "bust": "Bust",
+            "waist": "Waist",
+            "hip": "Hip",
+            "length": "Length",
+        }
+        for measurement_range in cast(list[dict[str, Any]], selected.get("measurement_ranges") or []):
+            name = measurement_range.get("name")
+            min_value = measurement_range.get("min")
+            max_value = measurement_range.get("max")
+            value_key = measurement_range.get("value_key")
+            if not isinstance(name, str) or not name:
+                continue
+            if min_value is None and max_value is None:
+                continue
+            if not isinstance(value_key, str) or not value_key:
+                continue
+            label = measurement_range_labels.get(name, name.title())
+            if min_value is None:
+                label_value = f"≤ {max_value:g} cm"
+            elif max_value is None:
+                label_value = f"≥ {min_value:g} cm"
+            else:
+                label_value = f"{min_value:g}–{max_value:g} cm"
+            active.append(
+                {
+                    "label": label,
+                    "value": label_value,
+                    "param": "measurement_range",
+                    "value_key": value_key,
                 }
             )
 

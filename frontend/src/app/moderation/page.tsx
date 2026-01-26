@@ -244,6 +244,28 @@ export default function ModerationDashboardPage() {
     }
   }, [fetchJson, loadResource, resource, selectedId]);
 
+  const handleSubmissionStatusUpdate = useCallback(
+    async (nextStatus: "approved" | "rejected") => {
+      if (!resource || resource.id !== "submissions" || !selectedId) return;
+      setSaving(true);
+      setError(null);
+      setNotice(null);
+      try {
+        await fetchJson(resource.detailPath(selectedId), {
+          method: "PATCH",
+          body: JSON.stringify({ status: nextStatus }),
+        });
+        setNotice(nextStatus === "approved" ? "Submission approved." : "Submission declined.");
+        await loadResource();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to update submission status.");
+      } finally {
+        setSaving(false);
+      }
+    },
+    [fetchJson, loadResource, resource, selectedId]
+  );
+
   if (loading) {
     return (
       <div className="mx-auto w-full max-w-4xl rounded-3xl border border-rose-100 bg-white/90 p-8 shadow-lg">
@@ -317,6 +339,26 @@ export default function ModerationDashboardPage() {
                 <p className="text-sm text-rose-500">{resource?.description}</p>
               </div>
               <div className="flex flex-wrap gap-3">
+                {resource?.id === "submissions" && selectedId ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleSubmissionStatusUpdate("approved")}
+                      disabled={saving}
+                      className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSubmissionStatusUpdate("rejected")}
+                      disabled={saving}
+                      className="rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold text-rose-600 disabled:opacity-60"
+                    >
+                      Decline
+                    </button>
+                  </>
+                ) : null}
                 {!resource?.single ? (
                   <button
                     type="button"

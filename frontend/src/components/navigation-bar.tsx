@@ -3,13 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChangeEvent, FocusEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FocusEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { useCurrency } from "@/components/currency-provider";
 import { useFlash } from "@/components/flash-provider";
 import { useLocale } from "@/components/locale-provider";
+import { useMeasurementUnit } from "@/components/measurement-unit-provider";
 import NavigationSearch from "@/components/navigation-search";
+import RoseDropdown from "@/components/ui/rose-dropdown";
 import {
   CurrencySummary,
   LanguageSummary,
@@ -20,12 +22,14 @@ import {
 
 const LANGUAGE_STORAGE_KEY = "jiraibrary.guest.language";
 const CURRENCY_STORAGE_KEY = "jiraibrary.guest.currency";
+const MEASUREMENT_STORAGE_KEY = "jiraibrary.guest.measurement";
 
 export default function NavigationBar() {
   const { user, logout, loading, updatePreferences } = useAuth();
   const { addFlash } = useFlash();
   const { locale, setLocale } = useLocale();
   const { currency, setCurrency } = useCurrency();
+  const { unit: measurementUnit, setUnit: setMeasurementUnit } = useMeasurementUnit();
   const [pending, setPending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [preferencePending, setPreferencePending] = useState(false);
@@ -33,6 +37,7 @@ export default function NavigationBar() {
   const [currencies, setCurrencies] = useState<CurrencySummary[]>([]);
   const [languageSelection, setLanguageSelection] = useState<string>(user?.preferred_language ?? "en");
   const [currencySelection, setCurrencySelection] = useState<string>(user?.preferred_currency ?? "USD");
+  const [measurementSelection, setMeasurementSelection] = useState<string>(user?.preferred_measurement_system ?? "cm");
   const router = useRouter();
   const pathname = usePathname();
   const loginHref = pathname && pathname !== "/profile" ? `/login?next=${encodeURIComponent(pathname)}` : "/login";
@@ -90,6 +95,9 @@ export default function NavigationBar() {
       const nextCurrency = user.preferred_currency ?? "USD";
       setCurrencySelection(nextCurrency);
       setCurrency(nextCurrency);
+      const nextMeasurement = user.preferred_measurement_system ?? "cm";
+      setMeasurementSelection(nextMeasurement);
+      setMeasurementUnit(nextMeasurement === "inch" ? "inch" : "cm");
       return;
     }
     if (typeof window === "undefined") {
@@ -97,15 +105,20 @@ export default function NavigationBar() {
       setLocale("en");
       setCurrencySelection("USD");
       setCurrency("USD");
+      setMeasurementSelection("cm");
+      setMeasurementUnit("cm");
       return;
     }
     const storedLanguage = window.localStorage.getItem(LANGUAGE_STORAGE_KEY) ?? "en";
     const storedCurrency = window.localStorage.getItem(CURRENCY_STORAGE_KEY) ?? "USD";
+    const storedMeasurement = window.localStorage.getItem(MEASUREMENT_STORAGE_KEY) ?? "cm";
     setLanguageSelection(storedLanguage);
     setLocale(storedLanguage);
     setCurrencySelection(storedCurrency);
     setCurrency(storedCurrency);
-  }, [setCurrency, setLocale, user]);
+    setMeasurementSelection(storedMeasurement);
+    setMeasurementUnit(storedMeasurement === "inch" ? "inch" : "cm");
+  }, [setCurrency, setLocale, setMeasurementUnit, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -146,8 +159,7 @@ export default function NavigationBar() {
   );
 
   const handleLanguageChange = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      const value = event.target.value;
+    (value: string) => {
       setLanguageSelection(value);
       setLocale(value);
       if (user) {
@@ -155,13 +167,13 @@ export default function NavigationBar() {
       } else if (typeof window !== "undefined") {
         window.localStorage.setItem(LANGUAGE_STORAGE_KEY, value);
       }
+      router.refresh();
     },
-    [applyPreferenceChange, setLocale, user],
+    [applyPreferenceChange, router, setLocale, user],
   );
 
   const handleCurrencyChange = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      const value = event.target.value;
+    (value: string) => {
       setCurrencySelection(value);
       setCurrency(value);
       if (user) {
@@ -169,8 +181,24 @@ export default function NavigationBar() {
       } else if (typeof window !== "undefined") {
         window.localStorage.setItem(CURRENCY_STORAGE_KEY, value);
       }
+      router.refresh();
     },
-    [applyPreferenceChange, setCurrency, user],
+    [applyPreferenceChange, router, setCurrency, user],
+  );
+
+  const handleMeasurementChange = useCallback(
+    (value: string) => {
+      const normalized = value === "inch" ? "inch" : "cm";
+      setMeasurementSelection(normalized);
+      setMeasurementUnit(normalized);
+      if (user) {
+        void applyPreferenceChange({ preferred_measurement_system: normalized });
+      } else if (typeof window !== "undefined") {
+        window.localStorage.setItem(MEASUREMENT_STORAGE_KEY, normalized);
+      }
+      router.refresh();
+    },
+    [applyPreferenceChange, router, setMeasurementUnit, user],
   );
 
   return (
@@ -184,45 +212,58 @@ export default function NavigationBar() {
               <label className="sr-only" htmlFor="language-select">
                 Preferred language
               </label>
-              <select
+              <RoseDropdown
                 id="language-select"
                 value={languageSelection}
                 onChange={handleLanguageChange}
                 disabled={preferencePending}
-                className="rounded-full border border-rose-200 bg-white px-3 py-1 text-rose-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
-              >
-                {languages.length === 0 ? (
-                  <option value="en">English</option>
-                ) : (
-                  languages.map((language) => (
-                    <option key={language.id} value={language.code}>
-                      {language.name}
-                    </option>
-                  ))
-                )}
-              </select>
+                options={
+                  languages.length === 0
+                    ? [{ value: "en", label: "English" }]
+                    : languages.map((language) => ({
+                        value: language.code,
+                        label: language.name,
+                      }))
+                }
+              />
               <label className="sr-only" htmlFor="currency-select">
                 Preferred currency
               </label>
-              <select
+              <RoseDropdown
                 id="currency-select"
                 value={currencySelection}
                 onChange={handleCurrencyChange}
                 disabled={preferencePending}
-                className="rounded-full border border-rose-200 bg-white px-3 py-1 text-rose-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
-              >
-                {currencies.length === 0 ? (
-                  <option value="USD">USD</option>
-                ) : (
-                  currencies.map((currency) => (
-                    <option key={currency.id} value={currency.code}>
-                      {currency.code} {currency.symbol ?? ""}
-                    </option>
-                  ))
-                )}
-              </select>
+                options={
+                  currencies.length === 0
+                    ? [{ value: "USD", label: "USD" }]
+                    : currencies.map((currency) => ({
+                        value: currency.code,
+                        label: `${currency.code} ${currency.symbol ?? ""}`.trim(),
+                      }))
+                }
+              />
+              <label className="sr-only" htmlFor="measurement-select">
+                Preferred measurement
+              </label>
+              <RoseDropdown
+                id="measurement-select"
+                value={measurementSelection}
+                onChange={handleMeasurementChange}
+                disabled={preferencePending}
+                options={[
+                  { value: "cm", label: "CM" },
+                  { value: "inch", label: "IN" },
+                ]}
+              />
           </div>
           <NavigationSearch className="order-last w-full md:order-none md:w-60 lg:w-72" />
+          <Link
+            href="/support"
+            className="rounded-full border border-rose-200 px-3 py-1 text-rose-600 transition hover:border-rose-300 hover:text-rose-800"
+          >
+            Support
+          </Link>
           {user ? null : (
             <Link
               href={loginHref}

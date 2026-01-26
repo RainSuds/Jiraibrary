@@ -236,49 +236,55 @@ export default function FilterHierarchicalDropdown({
           }
         }}
       >
-        <div className="flex w-full min-w-0 flex-1 items-center gap-2">
+        <div className="flex w-full min-w-0 flex-1 flex-wrap items-center gap-2">
           {selectedParents.length > 0 || selectedChildren.length > 0 ? (
-            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 overflow-visible">
               {selectedParents.map((value) => {
                 const option = parentMap.get(value);
                 const label = option?.label ?? value;
                 return (
-                  <button
+                  <div
                     key={`parent-${value}`}
-                    type="button"
-                    className="group inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-600 hover:bg-rose-200"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleRemoveParent(value);
-                    }}
-                    onKeyDown={(event) => handleChipKeyDown(event, value, handleRemoveParent)}
+                    className="group inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-600"
                   >
-                    <span>{label}</span>
-                    <span aria-hidden="true" className="text-sm text-rose-400 transition group-hover:text-rose-600">
+                    <span className="whitespace-nowrap">{label}</span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${label}`}
+                      className="rounded-full p-0.5 text-sm text-rose-400 transition hover:text-rose-600"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRemoveParent(value);
+                      }}
+                      onKeyDown={(event) => handleChipKeyDown(event, value, handleRemoveParent)}
+                    >
                       ×
-                    </span>
-                  </button>
+                    </button>
+                  </div>
                 );
               })}
               {selectedChildren.map((value) => {
                 const option = childMap.get(value);
                 const label = option?.label ?? value;
                 return (
-                  <button
+                  <div
                     key={`child-${value}`}
-                    type="button"
-                    className="group inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-50 px-3 py-1 text-xs font-medium text-rose-500 hover:bg-rose-200"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleRemoveChild(value);
-                    }}
-                    onKeyDown={(event) => handleChipKeyDown(event, value, handleRemoveChild)}
+                    className="group inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-50 px-3 py-1 text-xs font-medium text-rose-500"
                   >
-                    <span>{label}</span>
-                    <span aria-hidden="true" className="text-sm text-rose-300 transition group-hover:text-rose-600">
+                    <span className="whitespace-nowrap">{label}</span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${label}`}
+                      className="rounded-full p-0.5 text-sm text-rose-300 transition hover:text-rose-600"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRemoveChild(value);
+                      }}
+                      onKeyDown={(event) => handleChipKeyDown(event, value, handleRemoveChild)}
+                    >
                       ×
-                    </span>
-                  </button>
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -292,7 +298,9 @@ export default function FilterHierarchicalDropdown({
               setOpen(true);
             }}
             onKeyDown={handleInputKeyDown}
-            placeholder={selectedParents.length === 0 && selectedChildren.length === 0 ? placeholder : "Type to refine"}
+            placeholder={
+              selectedParents.length === 0 && selectedChildren.length === 0 ? placeholder : ""
+            }
             className="min-w-[7rem] flex-1 border-none bg-transparent text-sm text-rose-700 placeholder:text-rose-300 focus:outline-none"
             autoComplete="off"
           />

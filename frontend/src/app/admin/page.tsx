@@ -578,6 +578,27 @@ export default function AdminHubPage() {
     }
   }, [fetchJson, loadResource, resource, selectedId]);
 
+  const handleSubmissionStatusUpdate = useCallback(
+    async (nextStatus: "approved" | "rejected") => {
+      if (!resource || resource.id !== "submissions" || !selectedId) return;
+      setSaving(true);
+      setError(null);
+      setNotice(null);
+      try {
+        await fetchJson(resource.detailPath(selectedId), {
+          method: "PATCH",
+          body: JSON.stringify({ status: nextStatus }),
+        });
+        setNotice(nextStatus === "approved" ? "Submission approved." : "Submission declined.");
+        await loadResource();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to update submission status.");
+      } finally {
+        setSaving(false);
+      }
+    },
+    [fetchJson, loadResource, resource, selectedId]
+  );
   const handleUserRoleUpdate = useCallback(
     async (target: "admin" | "moderator" | "user") => {
       if (!resource || resource.id !== "users" || !selectedId) return;
@@ -726,6 +747,26 @@ export default function AdminHubPage() {
                   New record
                 </button>
               ) : null}
+                {resource?.id === "submissions" && selectedId ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleSubmissionStatusUpdate("approved")}
+                      disabled={saving}
+                      className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSubmissionStatusUpdate("rejected")}
+                      disabled={saving}
+                      className="rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold text-rose-600 disabled:opacity-60"
+                    >
+                      Decline
+                    </button>
+                  </>
+                ) : null}
               <button
                 type="button"
                 onClick={handleSave}

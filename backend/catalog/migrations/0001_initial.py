@@ -114,6 +114,7 @@ class Migration(migrations.Migration):
                 ('approved_at', models.DateTimeField(blank=True, null=True)),
                 ('extra_metadata', models.JSONField(blank=True, default=dict)),
                 ('product_number', models.CharField(blank=True, max_length=64)),
+                ('reference_urls', models.JSONField(blank=True, default=list)),
             ],
             options={
                 'ordering': ['brand__slug', 'slug'],
@@ -180,24 +181,17 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
-            name='ItemMeasurement',
+            name='MeasurementType',
             fields=[
                 ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_one_size', models.BooleanField(default=False)),
-                ('bust_cm', models.DecimalField(blank=True, decimal_places=2, max_digits=6, null=True)),
-                ('waist_cm', models.DecimalField(blank=True, decimal_places=2, max_digits=6, null=True)),
-                ('hip_cm', models.DecimalField(blank=True, decimal_places=2, max_digits=6, null=True)),
-                ('length_cm', models.DecimalField(blank=True, decimal_places=2, max_digits=6, null=True)),
-                ('sleeve_length_cm', models.DecimalField(blank=True, decimal_places=2, max_digits=6, null=True)),
-                ('hem_cm', models.DecimalField(blank=True, decimal_places=2, max_digits=6, null=True)),
-                ('heel_height_cm', models.DecimalField(blank=True, decimal_places=2, max_digits=6, null=True)),
-                ('bag_depth_cm', models.DecimalField(blank=True, decimal_places=2, max_digits=6, null=True)),
-                ('fit_notes', models.TextField(blank=True)),
+                ('name', models.CharField(max_length=64, unique=True)),
+                ('unit', models.CharField(default='cm', max_length=16)),
+                ('applicable_categories', models.JSONField(blank=True, default=list)),
             ],
             options={
-                'ordering': ['item__slug'],
+                'ordering': ['name'],
             },
         ),
         migrations.CreateModel(
@@ -296,6 +290,29 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
+            name='IngestionJob',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('source_url', models.URLField()),
+                ('source_language', models.CharField(default='en', max_length=10)),
+                ('source_site', models.CharField(blank=True, max_length=255)),
+                ('status', models.CharField(choices=[('queued', 'Queued'), ('processing', 'Processing'), ('succeeded', 'Succeeded'), ('failed', 'Failed')], default='queued', max_length=16)),
+                ('raw_extracted', models.JSONField(blank=True, default=dict)),
+                ('normalized_payload', models.JSONField(blank=True, default=dict)),
+                ('summary', models.CharField(blank=True, max_length=255)),
+                ('error_message', models.TextField(blank=True)),
+                ('brand_name', models.CharField(blank=True, max_length=255)),
+                ('brand_slug', models.SlugField(blank=True, max_length=255)),
+                ('requested_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='ingestion_jobs', to=settings.AUTH_USER_MODEL)),
+                ('submission', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='ingestion_jobs', to='catalog.itemsubmission')),
+            ],
+            options={
+                'ordering': ['-created_at'],
+            },
+        ),
+        migrations.CreateModel(
             name='ItemSubstyle',
             fields=[
                 ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
@@ -361,6 +378,22 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
+            name='VariantMeasurement',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('min_value', models.DecimalField(blank=True, decimal_places=2, max_digits=8, null=True)),
+                ('max_value', models.DecimalField(blank=True, decimal_places=2, max_digits=8, null=True)),
+                ('measurement_type', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='variant_measurements', to='catalog.measurementtype')),
+                ('variant', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='measurements', to='catalog.itemvariant')),
+            ],
+            options={
+                'ordering': ['variant__item__slug', 'measurement_type__name'],
+                'unique_together': {('variant', 'measurement_type')},
+            },
+        ),
+        migrations.CreateModel(
             name='Language',
             fields=[
                 ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
@@ -401,6 +434,11 @@ class Migration(migrations.Migration):
             options={
                 'ordering': ['name'],
             },
+        ),
+        migrations.AddField(
+            model_name='item',
+            name='styles',
+            field=models.ManyToManyField(blank=True, related_name='items', to='catalog.style'),
         ),
         migrations.CreateModel(
             name='Subcategory',
@@ -681,11 +719,6 @@ class Migration(migrations.Migration):
             field=models.ManyToManyField(blank=True, related_name='items', through='catalog.ItemFeature', to='catalog.feature'),
         ),
         migrations.AddField(
-            model_name='itemmeasurement',
-            name='item',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='measurements', to='catalog.item'),
-        ),
-        migrations.AddField(
             model_name='itemmetadata',
             name='item',
             field=models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='metadata', to='catalog.item'),
@@ -749,11 +782,6 @@ class Migration(migrations.Migration):
             model_name='itemvariant',
             name='item',
             field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='variants', to='catalog.item'),
-        ),
-        migrations.AddField(
-            model_name='itemmeasurement',
-            name='variant',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='measurements', to='catalog.itemvariant'),
         ),
         migrations.AddField(
             model_name='image',

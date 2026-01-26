@@ -34,7 +34,15 @@ STYLE_DEFINITIONS: Dict[str, List[str]] = {
         "Mode",
         "Yamanba gyaru",
     ],
-    "Visual kei": [],
+    "Visual kei": [
+        "Angura Kei",
+        "Casual Visual Kei",
+        "Iryou Kei",
+        "Kote Kote Kei",
+        "Kurofuku Kei",
+        "Oshare Kei",
+        "Tanbi Kei",
+    ],
 }
 
 
@@ -218,6 +226,17 @@ BRAND_TAXONOMY_SEED: Dict[str, Dict[str, Any]] = {
     },
 }
 
+MEASUREMENT_TYPE_SEED: Dict[str, Dict[str, Any]] = {
+    "bust": {"name": "bust", "unit": "cm", "categories": ["top", "dress"]},
+    "waist": {"name": "waist", "unit": "cm", "categories": ["top", "pants", "dress"]},
+    "hip": {"name": "hip", "unit": "cm", "categories": ["pants", "dress"]},
+    "length": {"name": "length", "unit": "cm", "categories": ["top", "pants", "dress"]},
+    "skirt_length": {"name": "skirt_length", "unit": "cm", "categories": ["dress"]},
+    "shoulder": {"name": "shoulder", "unit": "cm", "categories": ["top", "dress"]},
+    "sleeve_length": {"name": "sleeve_length", "unit": "cm", "categories": ["top", "dress"]},
+    "cuff": {"name": "cuff", "unit": "cm", "categories": ["top", "dress"]},
+}
+
 
 class Command(BaseCommand):
     help = "Seed the catalog with a small set of brands, items, and related reference data."
@@ -241,6 +260,7 @@ def seed_catalog() -> None:
         subcategories = _create_subcategories(categories)
         styles = _create_styles()
         substyles = _create_substyles(styles)
+        measurement_types = _ensure_measurement_types()
         _sync_brand_translations(brands=brands, languages=languages)
         _sync_brand_taxonomy(brands=brands, styles=styles, substyles=substyles)
         colors = _create_colors()
@@ -254,7 +274,9 @@ def seed_catalog() -> None:
             brands=brands,
             categories=categories,
             subcategories=subcategories,
+            styles=styles,
             substyles=substyles,
+            measurement_types=measurement_types,
             colors=colors,
             fabrics=fabrics,
             tags=tags,
@@ -303,6 +325,29 @@ def _ensure_currencies() -> dict[str, models.Currency]:
         )
         currencies[code] = currency
     return currencies
+
+
+def _ensure_measurement_types() -> dict[str, models.MeasurementType]:
+    measurement_types: dict[str, models.MeasurementType] = {}
+    for key, attrs in MEASUREMENT_TYPE_SEED.items():
+        measurement_type, _ = models.MeasurementType.objects.get_or_create(
+            name=attrs["name"],
+            defaults={
+                "unit": attrs["unit"],
+                "applicable_categories": attrs.get("categories", []),
+            },
+        )
+        changed_fields: list[str] = []
+        if measurement_type.unit != attrs["unit"]:
+            measurement_type.unit = attrs["unit"]
+            changed_fields.append("unit")
+        if measurement_type.applicable_categories != attrs.get("categories", []):
+            measurement_type.applicable_categories = attrs.get("categories", [])
+            changed_fields.append("applicable_categories")
+        if changed_fields:
+            measurement_type.save(update_fields=changed_fields)
+        measurement_types[key] = measurement_type
+    return measurement_types
 
 
 def _create_brands() -> dict[str, models.Brand]:
@@ -440,6 +485,8 @@ def _create_colors() -> dict[str, models.Color]:
         "blue": {"name": "Blue", "hex_code": "#2f6ed9"},
         "sax": {"name": "Sax", "hex_code": "#9cd0ff"},
         "black": {"name": "Black", "hex_code": "#000000"},
+        "bordeaux": {"name": "Bordeaux", "hex_code": "#6a1b2e"},
+        "purple": {"name": "Purple", "hex_code": "#7a4fa3"},
     }
     colors: dict[str, models.Color] = {}
     for slug, attrs in data.items():
@@ -458,6 +505,9 @@ def _create_fabrics() -> dict[str, models.Fabric]:
         "cotton": {"name": "Cotton"},
         "chiffon": {"name": "Chiffon"},
         "polyester": {"name": "Polyester"},
+        "polyurethane": {"name": "Polyurethane"},
+        "nylon": {"name": "Nylon"},
+        "spandex": {"name": "Spandex"},
     }
     fabrics: dict[str, models.Fabric] = {}
     for key, attrs in data.items():
@@ -476,9 +526,24 @@ def _create_tags() -> dict[str, models.Tag]:
             "description": "Indicates a piece is a solid color without any prints or patterns.",
             "type": models.Tag.TagType.DETAIL,
         },
+        "stripe": {
+            "name": "Stripe",
+            "description": "Striped or pinstripe pattern.",
+            "type": models.Tag.TagType.DETAIL,
+        },
         "print": {
             "name": "Print",
             "description": "Highlights that the piece features printed artwork or patterned motifs.",
+            "type": models.Tag.TagType.DETAIL,
+        },
+        "cross": {
+            "name": "Cross motif",
+            "description": "Features cross motifs or cross-shaped hardware.",
+            "type": models.Tag.TagType.DETAIL,
+        },
+        "check": {
+            "name": "Check",
+            "description": "Checkered or plaid pattern.",
             "type": models.Tag.TagType.DETAIL,
         },
     }
@@ -536,10 +601,6 @@ def _create_features() -> dict[str, models.Feature]:
             "name": "Button Front",
             "category": models.Feature.FeatureCategory.ATTACHMENT,
         },
-        "print-graphic": {
-            "name": "Graphic Print",
-            "category": models.Feature.FeatureCategory.TRIM,
-        },
         "back-vent": {
             "name": "Back Vent",
             "category": models.Feature.FeatureCategory.CONSTRUCTION,
@@ -558,6 +619,14 @@ def _create_features() -> dict[str, models.Feature]:
         },
         "skirt-pants": {
             "name": "Skirt Pants",
+            "category": models.Feature.FeatureCategory.CONSTRUCTION,
+        },
+        "lace-up": {
+            "name": "Lace-up Front",
+            "category": models.Feature.FeatureCategory.CONSTRUCTION,
+        },
+        "pleated-skirt": {
+            "name": "Pleated Skirt",
             "category": models.Feature.FeatureCategory.CONSTRUCTION,
         },
     }
@@ -715,7 +784,9 @@ def _create_items(
     brands: dict[str, models.Brand],
     categories: dict[str, models.Category],
     subcategories: dict[str, models.Subcategory],
+    styles: dict[str, models.Style],
     substyles: dict[str, models.Substyle],
+    measurement_types: dict[str, models.MeasurementType],
     colors: dict[str, models.Color],
     fabrics: dict[str, models.Fabric],
     tags: dict[str, models.Tag],
@@ -738,6 +809,9 @@ def _create_items(
             "has_matching_set": True,
             "verified_source": True,
             "status": models.Item.ItemStatus.PUBLISHED,
+            "reference_urls": [
+                "https://acdcrag.com/products/ko-1115-1115%E3%82%B7%E3%83%A3%E3%83%84",
+            ],
         },
     )[0]
     _add_item_details(
@@ -750,25 +824,26 @@ def _create_items(
             features["short-sleeves"],
             features["zipper-detail"],
             features["button-front"],
-            features["print-graphic"],
             features["back-vent"],
             features["tuxedo-collar"],
         ],
         collections=[collections["acdc-rag:PUNK Revival 2nd"]],
+        styles=[styles["visual-kei"]],
         substyles=[],
         price_currency=currencies["JPY"],
         price_amount=Decimal("6490"),
         tags=[tags["print"]],
+        measurement_types=measurement_types,
         translation_overrides={
             "en": {
                 "name": "1115 Shirt",
                 "description": (
-                    "[Design]\n"
-                    "Want to bring back those heart-racing moments?\n"
-                    "Dive into nostalgic-meets-fresh Harajuku punk revival!\n\n"
-                    "[Details]\n"
-                    "Fierce zip-accented punk shirt!\n"
-                    "Removable sleeves for that perfect 2-way versatility"
+                    "A punk-inspired shirt in black with a zip-accented front and detachable sleeves. "
+                    "Lightweight and easy to layer with a longer back hem for styling." 
+                    "\n\n"
+                    "Materials: Polyester.\n"
+                    "Lining: None. Elasticity: None. Transparency: None.\n"
+                    "Production country: China."
                 ),
             },
             "ja": {
@@ -783,7 +858,323 @@ def _create_items(
                 ),
             },
         },
-        secondary_prices=[(currencies["USD"], Decimal("44.00"))],
+        secondary_prices=[(currencies["USD"], Decimal("43.00"))],
+        size_variants=[
+            {
+                "label": "One Size",
+                "size_descriptor": "One Size",
+                "measurements": [
+                    {
+                        "type": "shoulder",
+                        "min": Decimal("38"),
+                        "max": Decimal("38"),
+                    },
+                    {
+                        "type": "bust",
+                        "min": Decimal("100"),
+                        "max": Decimal("100"),
+                    },
+                    {
+                        "type": "length",
+                        "min": Decimal("57"),
+                        "max": Decimal("75"),
+                    },
+                    {
+                        "type": "sleeve_length",
+                        "min": Decimal("65"),
+                        "max": Decimal("65"),
+                    },
+                ],
+            }
+        ],
+    )
+
+    dear_my_love = models.Item.objects.update_or_create(
+        slug="cross-stud-lace-up-pleated-jumper-dress",
+        defaults={
+            "brand": brands["dear-my-love"],
+            "category": categories["dress"],
+            "subcategory": subcategories.get("jumperskirt"),
+            "origin_country": "JP",
+            "production_country": "CN",
+            "default_language": languages["ja"],
+            "default_currency": currencies["JPY"],
+            "release_year": 2026,
+            "collaboration": "",
+            "limited_edition": False,
+            "has_matching_set": False,
+            "verified_source": True,
+            "status": models.Item.ItemStatus.PUBLISHED,
+            "product_number": "535959",
+            "extra_metadata": {
+                "color_aliases": {
+                    "purple": "Purple Check",
+                }
+            },
+            "reference_urls": [
+                "https://dreamvs.jp/products/535959",
+            ],
+        },
+    )[0]
+    _add_item_details(
+        dear_my_love,
+        languages=languages,
+        colors=[
+            colors["black"],
+            colors["bordeaux"],
+            colors["purple"],
+        ],
+        fabrics=[
+            (fabrics["polyester"], Decimal("95")),
+            (fabrics["polyurethane"], Decimal("5")),
+        ],
+        features=[
+            features["button-front"],
+            features["lace"],
+            features["lace-up"],
+            features["pleated-skirt"],
+        ],
+        collections=[],
+        styles=[styles["jirai-kei"]],
+        substyles=[],
+        price_currency=currencies["JPY"],
+        price_amount=Decimal("9990"),
+        tags=[
+            tags["cross"],
+            tags["check"],
+        ],
+        measurement_types=measurement_types,
+        translation_overrides={
+            "ja": {
+                "name": "十字架スタッズジャンスカ風レースアッププリーツワンピース",
+                "description": (
+                    "クラシカルな可愛さとゴシックなエッセンスを掛け合わせた、\n"
+                    "ジャンスカ風デザインの主役級ワンピース。\n\n"
+                    "胸元には十字架モチーフのボタンをあしらい、\n"
+                    "シャープな印象のスタッズ付き角襟が顔周りをすっきりと演出。\n"
+                    "身頃中央はレースアップデザインで、縦ラインを強調しスタイルアップ効果も◎\n\n"
+                    "ウエスト部分は後ろゴム仕様で、程よくフィットしながら楽な着心地を叶えます。\n"
+                    "両サイドのベルトバックルがアクセントになり、コーデにエッジをプラス。\n"
+                    "スカート部分はふんわり広がるプリーツシルエット。\n\n"
+                    "1枚でコーデが完成する存在感があり、\n"
+                    "地雷系・量産型・ゴシックコーデまで幅広く活躍する一着です。"
+                ),
+            },
+            "en": {
+                "name": "Cross Stud Jumper-Style Lace-Up Pleated Dress",
+                "description": (
+                    "A jumper-skirt inspired statement dress blending classical sweetness with gothic accents. "
+                    "Cross-motif buttons, studded collar points, and a lace-up front sharpen the silhouette, "
+                    "while the back elastic waist keeps it comfortable. Finished with side buckles and a full pleated skirt."
+                ),
+            },
+        },
+        size_variants=[
+            {
+                "label": "S-M",
+                "size_descriptor": "S-M",
+                "measurements": [
+                    {
+                        "type": "shoulder",
+                        "min": Decimal("31"),
+                        "max": Decimal("31"),
+                    },
+                    {
+                        "type": "length",
+                        "min": Decimal("78"),
+                        "max": Decimal("78"),
+                    },
+                    {
+                        "type": "bust",
+                        "min": Decimal("92"),
+                        "max": Decimal("92"),
+                    },
+                    {
+                        "type": "waist",
+                        "min": Decimal("68"),
+                        "max": Decimal("86"),
+                    },
+                    {
+                        "type": "sleeve_length",
+                        "min": Decimal("62"),
+                        "max": Decimal("62"),
+                    },
+                    {
+                        "type": "cuff",
+                        "min": Decimal("22"),
+                        "max": Decimal("22"),
+                    },
+                ],
+            },
+            {
+                "label": "M-L",
+                "size_descriptor": "M-L",
+                "measurements": [
+                    {
+                        "type": "shoulder",
+                        "min": Decimal("32"),
+                        "max": Decimal("32"),
+                    },
+                    {
+                        "type": "length",
+                        "min": Decimal("79"),
+                        "max": Decimal("79"),
+                    },
+                    {
+                        "type": "bust",
+                        "min": Decimal("96"),
+                        "max": Decimal("96"),
+                    },
+                    {
+                        "type": "waist",
+                        "min": Decimal("72"),
+                        "max": Decimal("90"),
+                    },
+                    {
+                        "type": "sleeve_length",
+                        "min": Decimal("62"),
+                        "max": Decimal("62"),
+                    },
+                    {
+                        "type": "cuff",
+                        "min": Decimal("24"),
+                        "max": Decimal("24"),
+                    },
+                ],
+            },
+            {
+                "label": "LL-3L",
+                "size_descriptor": "LL-3L",
+                "measurements": [
+                    {
+                        "type": "shoulder",
+                        "min": Decimal("33"),
+                        "max": Decimal("33"),
+                    },
+                    {
+                        "type": "length",
+                        "min": Decimal("82"),
+                        "max": Decimal("82"),
+                    },
+                    {
+                        "type": "bust",
+                        "min": Decimal("102"),
+                        "max": Decimal("102"),
+                    },
+                    {
+                        "type": "waist",
+                        "min": Decimal("78"),
+                        "max": Decimal("98"),
+                    },
+                    {
+                        "type": "sleeve_length",
+                        "min": Decimal("62"),
+                        "max": Decimal("62"),
+                    },
+                    {
+                        "type": "cuff",
+                        "min": Decimal("28"),
+                        "max": Decimal("28"),
+                    },
+                ],
+            },
+        ],
+    )
+
+    dimmoire = models.Item.objects.update_or_create(
+        slug="ultimate-maid-dress",
+        defaults={
+            "brand": brands["dimmoire"],
+            "category": categories["dress"],
+            "subcategory": subcategories.get("one-piece"),
+            "origin_country": "JP",
+            "production_country": "JP",
+            "default_language": languages["en"],
+            "default_currency": currencies["JPY"],
+            "release_year": 2026,
+            "collaboration": "",
+            "limited_edition": False,
+            "has_matching_set": False,
+            "verified_source": True,
+            "status": models.Item.ItemStatus.PUBLISHED,
+            "product_number": "G-Dim23-075",
+            "extra_metadata": {
+                "colorways": [
+                    {
+                        "label": "Black",
+                        "colors": ["Black"],
+                    },
+                    {
+                        "label": "Black × White",
+                        "colors": ["Black", "White"],
+                    },
+                ],
+            },
+            "reference_urls": [
+                "https://acrotokyo-global.com/goods_en_USD_278.html",
+            ],
+        },
+    )[0]
+    _add_item_details(
+        dimmoire,
+        languages=languages,
+        colors=[
+            colors["black"],
+            colors["white"],
+        ],
+        fabrics=[
+            (fabrics["nylon"], Decimal("88")),
+            (fabrics["spandex"], Decimal("12")),
+            (fabrics["polyester"], Decimal("100")),
+        ],
+        features=[],
+        collections=[],
+        styles=[styles["jirai-kei"]],
+        substyles=[substyles["subcul"]],
+        price_currency=currencies["JPY"],
+        price_amount=Decimal("20000"),
+        tags=[tags["stripe"], tags["print"]],
+        measurement_types=measurement_types,
+        translation_overrides={
+            "en": {
+                "name": "Ultimate Maid Dress",
+                "description": (
+                    "Pre-order resale for the Ultimate Maid Dress.\n"
+                    "Pre-order period: Jan 26, 18:00 JST – Feb 1, 23:59 JST.\n"
+                    "Estimated shipping begins mid-May.\n\n"
+                    "A maid-motif dress with a convertible look: detach the apron or attach the heart-shaped parts for a new style.\n"
+                    "Colorways include Gothic-style Black & Stripe and Gothic Lolita-style Black & White.\n\n"
+                    "Notes: cancellations/changes not accepted after ordering; unpaid orders are canceled after the cutoff."
+                ),
+            }
+        },
+        secondary_prices=[(currencies["USD"], Decimal("130.02"))],
+        size_variants=[
+            {
+                "label": "M",
+                "size_descriptor": "M",
+                "measurements": [
+                    {"type": "length", "min": Decimal("31"), "max": Decimal("31")},
+                    {"type": "bust", "min": Decimal("43"), "max": Decimal("43")},
+                    {"type": "waist", "min": Decimal("35"), "max": Decimal("35")},
+                    {"type": "shoulder", "min": Decimal("35"), "max": Decimal("35")},
+                    {"type": "sleeve_length", "min": Decimal("62"), "max": Decimal("62")},
+                    {"type": "skirt_length", "min": Decimal("43"), "max": Decimal("43")},
+                ],
+            },
+            {
+                "label": "L",
+                "size_descriptor": "L",
+                "measurements": [
+                    {"type": "length", "min": Decimal("32"), "max": Decimal("32")},
+                    {"type": "bust", "min": Decimal("45"), "max": Decimal("45")},
+                    {"type": "waist", "min": Decimal("37"), "max": Decimal("37")},
+                    {"type": "shoulder", "min": Decimal("37"), "max": Decimal("37")},
+                    {"type": "sleeve_length", "min": Decimal("63"), "max": Decimal("63")},
+                    {"type": "skirt_length", "min": Decimal("44"), "max": Decimal("44")},
+                ],
+            },
+        ],
     )
 
     liz_lisa = models.Item.objects.update_or_create(
@@ -802,6 +1193,11 @@ def _create_items(
             "has_matching_set": False,
             "verified_source": True,
             "status": models.Item.ItemStatus.PUBLISHED,
+            "product_number": "451-6347-0",
+            "reference_urls": [
+                "https://tokyokawaiilife.com/goods_en_USD_2499.html",
+                "https://www.tokyokawaiilife.jp/fs/lizlisaadmin/all-dresses/451-6347-0",
+            ],
         },
     )[0]
     _add_item_details(
@@ -819,20 +1215,14 @@ def _create_items(
         price_currency=currencies["JPY"],
         price_amount=Decimal("20800"),
         tags=[tags["print"]],
+        measurement_types=measurement_types,
         translation_overrides={
             "en": {
                 "name": "Sewing Bear Set-Up",
                 "description": (
-                    "[Design]\n"
-                    "The original patterned set-up returns, printed with a charming motif of a handsome bear sewing.\n"
-                    "Features a sailor collar and chest ribbon as key points of the design.\n"
-                    "The bottoms are skirt pants, allowing easy coordination with blouses and versatile outfit styling.\n"
-                    "[Details]\n"
-                    "Set-up consisting of top and skirt-pants.\n"
-                    "Top features sailor collar and decorative ribbon.\n"
-                    "Skirt-pants provide both comfort and coverage for varied coordinates.\n"
-                    "Available in White, Pink, and Blue (availability may vary).\n"
-                    "Size: Free."
+                    "The original patterned set-up is back again, printed with a motif of a handsome bear sewing. "
+                    "The sailor collar and ribbon at the chest are the key points. "
+                    "The bottom part is a pair of skirt pants, which can be coordinated with your blouse, so you can also wear it with a variety of outfits."
                 ),
             },
             "ja": {
@@ -849,11 +1239,54 @@ def _create_items(
                 ),
             },
         },
-        secondary_prices=[(currencies["USD"], Decimal("133.00"))],
+        secondary_prices=[(currencies["USD"], Decimal("135.22"))],
+        size_variants=[
+            {
+                "label": "F",
+                "size_descriptor": "Free",
+                "measurements": [
+                    {
+                        "type": "length",
+                        "min": Decimal("72"),
+                        "max": Decimal("72"),
+                    },
+                    {
+                        "type": "shoulder",
+                        "min": Decimal("33.5"),
+                        "max": Decimal("33.5"),
+                    },
+                    {
+                        "type": "bust",
+                        "min": Decimal("47.5"),
+                        "max": Decimal("47.5"),
+                    },
+                    {
+                        "type": "waist",
+                        "min": Decimal("63"),
+                        "max": Decimal("93"),
+                    },
+                    {
+                        "type": "sleeve_length",
+                        "min": Decimal("61.5"),
+                        "max": Decimal("61.5"),
+                    },
+                    {
+                        "type": "cuff",
+                        "min": Decimal("11.5"),
+                        "max": Decimal("11.5"),
+                    },
+                    {
+                        "type": "skirt_length",
+                        "min": Decimal("42.5"),
+                        "max": Decimal("42.5"),
+                    },
+                ],
+            }
+        ],
     )
 
     rojita = models.Item.objects.update_or_create(
-        slug="ウエストリボンデザインスカート",
+        slug="waist-ribbon-design-skirt",
         defaults={
             "brand": brands["rojita"],
             "category": categories["bottom"],
@@ -867,19 +1300,53 @@ def _create_items(
             "has_matching_set": False,
             "verified_source": True,
             "status": models.Item.ItemStatus.PUBLISHED,
+            "product_number": "5534349",
+            "reference_urls": [
+                "https://rlab-store.jp/c/ROJITA/ROJITA-bottoms/ROJITA-skirt/5534349",
+            ],
         },
     )[0]
     _add_item_details(
         rojita,
         languages=languages,
-        colors=[colors["sax"]],
-        fabrics=[(fabrics["cotton"], Decimal("55")), (fabrics["chiffon"], Decimal("45"))],
+        colors=[colors["black"], colors["pink"], colors["white"]],
+        fabrics=[
+            (fabrics["polyester"], Decimal("97")),
+            (fabrics["polyurethane"], Decimal("3")),
+        ],
         features=[features["lace"]],
         collections=[collections["rojita:Waist Ribbon Design Skirt"]],
         substyles=[substyles["classic"]],
         price_currency=currencies["JPY"],
-        price_amount=Decimal("31200"),
+        price_amount=Decimal("8690"),
         tags=[tags["solid"]],
+        measurement_types=measurement_types,
+        translation_overrides={
+            "ja": {
+                "name": "ウエストリボンデザインスカート",
+            },
+            "en": {
+                "name": "Waist Ribbon Design Skirt",
+            },
+        },
+        size_variants=[
+            {
+                "label": "F",
+                "size_descriptor": "Free",
+                "measurements": [
+                    {
+                        "type": "length",
+                        "min": Decimal("43.5"),
+                        "max": Decimal("43.5"),
+                    },
+                    {
+                        "type": "waist",
+                        "min": Decimal("61"),
+                        "max": Decimal("61"),
+                    },
+                ],
+            }
+        ],
     )
 
 
@@ -891,12 +1358,15 @@ def _add_item_details(
     fabrics: list[tuple[models.Fabric, Decimal]],
     features: list[models.Feature],
     collections: list[models.Collection],
+    styles: list[models.Style] | None = None,
     substyles: list[models.Substyle],
     price_currency: models.Currency,
     price_amount: Decimal,
     tags: list[models.Tag] | None = None,
     translation_overrides: dict[str, dict[str, str]] | None = None,
     secondary_prices: list[tuple[models.Currency, Decimal]] | None = None,
+    measurement_types: dict[str, models.MeasurementType] | None = None,
+    size_variants: list[dict[str, Any]] | None = None,
 ) -> None:
     translation_defaults = {
         "description": "A charming release featuring sugary motifs and ruffled trims.",
@@ -943,14 +1413,49 @@ def _add_item_details(
                 },
             )
 
-    models.ItemVariant.objects.update_or_create(
-        item=item,
-        variant_label="Default",
-        defaults={
-            "stock_status": models.ItemVariant.StockStatus.AVAILABLE,
-            "notes": {},
-        },
-    )
+    if size_variants:
+        desired_labels = {variant.get("label") for variant in size_variants if variant.get("label")}
+        models.ItemVariant.objects.filter(item=item).exclude(variant_label__in=desired_labels).delete()
+        models.VariantMeasurement.objects.filter(variant__item=item).exclude(variant__variant_label__in=desired_labels).delete()
+        for variant_data in size_variants:
+            label = str(variant_data.get("label"))
+            size_descriptor = str(variant_data.get("size_descriptor") or label)
+            variant, _ = models.ItemVariant.objects.update_or_create(
+                item=item,
+                variant_label=label,
+                defaults={
+                    "size_descriptor": size_descriptor,
+                    "stock_status": models.ItemVariant.StockStatus.AVAILABLE,
+                    "notes": {},
+                },
+            )
+            entries = variant_data.get("measurements") if isinstance(variant_data.get("measurements"), list) else []
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                measurement_key = entry.get("type")
+                if not measurement_key or not measurement_types:
+                    continue
+                measurement_type = measurement_types.get(measurement_key)
+                if not measurement_type:
+                    continue
+                models.VariantMeasurement.objects.update_or_create(
+                    variant=variant,
+                    measurement_type=measurement_type,
+                    defaults={
+                        "min_value": entry.get("min"),
+                        "max_value": entry.get("max"),
+                    },
+                )
+    else:
+        models.ItemVariant.objects.update_or_create(
+            item=item,
+            variant_label="Default",
+            defaults={
+                "stock_status": models.ItemVariant.StockStatus.AVAILABLE,
+                "notes": {},
+            },
+        )
 
     models.ItemMetadata.objects.update_or_create(
         item=item,
@@ -984,6 +1489,9 @@ def _add_item_details(
             collection=collection,
             defaults={"role": models.ItemCollection.CollectionRole.MAINLINE},
         )
+
+    if styles:
+        item.styles.set(styles)
 
     for substyle in substyles:
         models.ItemSubstyle.objects.get_or_create(item=item, substyle=substyle)

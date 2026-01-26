@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import ColorSwatch from "@/components/color-swatch";
+
 export type FilterDropdownOption = {
   value: string;
   label: string;
@@ -155,37 +157,34 @@ export default function FilterDropdown({
           }
         }}
       >
-        <div className="flex w-full min-w-0 flex-1 items-center gap-2">
+        <div className="flex w-full min-w-0 flex-1 flex-wrap items-center gap-2">
           {selectedValues.length > 0 ? (
-            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 overflow-visible">
               {selectedValues.map((value) => {
                 const option = optionMap.get(value);
                 const label = option?.label ?? value;
                 return (
-                  <button
+                  <div
                     key={value}
-                    type="button"
-                    className="group inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-600 hover:bg-rose-200"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleRemoveChip(value);
-                    }}
-                    onKeyDown={(event) => handleChipKeyDown(event, value)}
+                    className="group inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-600"
                   >
                     {option?.swatch ? (
-                      <span
-                        aria-hidden="true"
-                        className="h-3 w-3 rounded-full border border-white/60 shadow"
-                        style={{
-                          backgroundColor: option.swatch,
-                        }}
-                      />
+                      <ColorSwatch colors={[{ hex: option.swatch }]} />
                     ) : null}
-                    <span>{label}</span>
-                    <span aria-hidden="true" className="text-sm text-rose-400 transition group-hover:text-rose-600">
+                    <span className="whitespace-nowrap">{label}</span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${label}`}
+                      className="rounded-full p-0.5 text-sm text-rose-400 transition hover:text-rose-600"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRemoveChip(value);
+                      }}
+                      onKeyDown={(event) => handleChipKeyDown(event, value)}
+                    >
                       ×
-                    </span>
-                  </button>
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -199,7 +198,7 @@ export default function FilterDropdown({
               setOpen(true);
             }}
             onKeyDown={handleKeyDown}
-            placeholder={selectedValues.length === 0 ? placeholder : "Type to refine"}
+            placeholder={selectedValues.length === 0 ? placeholder : ""}
             className="min-w-[7rem] flex-1 border-none bg-transparent text-sm text-rose-700 placeholder:text-rose-300 focus:outline-none"
             autoComplete="off"
           />
@@ -253,12 +252,9 @@ export default function FilterDropdown({
                           <span className="flex flex-col">
                             <span className="flex items-center gap-2 font-medium">
                               {option.swatch ? (
-                                <span
-                                  aria-hidden="true"
-                                  className="inline-block h-4 w-4 rounded-full border border-rose-100 shadow-sm"
-                                  style={{
-                                    backgroundColor: option.swatch,
-                                  }}
+                                <ColorSwatch
+                                  colors={[{ hex: option.swatch }]}
+                                  dotClassName="h-4 w-4"
                                 />
                               ) : null}
                               <span>{option.label}</span>

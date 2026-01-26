@@ -20,7 +20,11 @@ const normalizeCurrency = (value: string | null | undefined) => {
   return value.trim().toUpperCase();
 };
 
-const resolveInitialCurrency = () => {
+const resolveInitialCurrency = (initialCurrency?: string) => {
+  const normalizedInitial = normalizeCurrency(initialCurrency);
+  if (normalizedInitial) {
+    return normalizedInitial;
+  }
   if (typeof window === "undefined") {
     return DEFAULT_CURRENCY;
   }
@@ -28,8 +32,13 @@ const resolveInitialCurrency = () => {
   return stored || DEFAULT_CURRENCY;
 };
 
-export function CurrencyProvider({ children }: { children: React.ReactNode }) {
-  const [currency, setCurrencyState] = useState(resolveInitialCurrency);
+type CurrencyProviderProps = {
+  children: React.ReactNode;
+  initialCurrency?: string | null;
+};
+
+export function CurrencyProvider({ children, initialCurrency }: CurrencyProviderProps) {
+  const [currency, setCurrencyState] = useState(() => resolveInitialCurrency(initialCurrency));
   const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>([DEFAULT_CURRENCY]);
 
   useEffect(() => {
@@ -59,6 +68,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
     setCurrencyState(normalized);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(CURRENCY_STORAGE_KEY, normalized);
+      document.cookie = `${CURRENCY_STORAGE_KEY}=${normalized}; path=/; max-age=31536000`;
     }
   }, []);
 
@@ -68,6 +78,19 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
       applyCurrency(DEFAULT_CURRENCY);
     }
   }, [applyCurrency, currency, supportedCurrencies]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = normalizeCurrency(window.localStorage.getItem(CURRENCY_STORAGE_KEY));
+    if (stored && stored !== currency) {
+      applyCurrency(stored);
+      return;
+    }
+    if (!stored && currency) {
+      window.localStorage.setItem(CURRENCY_STORAGE_KEY, currency);
+      document.cookie = `${CURRENCY_STORAGE_KEY}=${currency}; path=/; max-age=31536000`;
+    }
+  }, [applyCurrency, currency]);
 
   const formatCurrency = useCallback(
     (value: number, options?: Intl.NumberFormatOptions) =>

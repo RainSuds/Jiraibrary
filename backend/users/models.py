@@ -66,6 +66,7 @@ class UserProfile(TimeStampedUUIDModel):
     website = models.URLField(blank=True)
     preferred_languages = models.JSONField(default=list, blank=True)
     preferred_currency = models.CharField(max_length=3, blank=True)
+    preferred_measurement_system = models.CharField(max_length=8, blank=True)
     social_links = models.JSONField(default=dict, blank=True)
     avatar_url = models.URLField(blank=True)
 
